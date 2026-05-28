@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QUANTUM Work Management</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d0d0d;--bg2:#141414;--bg3:#1b1b1b;--bg4:#242424;--line:#333;--line2:#454545;--red:#e50914;--red2:#b20710;--green:#46d369;--gold:#f5c518;--blue:#4fc3f7;--text:#ededed;--text2:#bababa;--text3:#858585;--radius:8px;--shadow:0 24px 90px rgba(0,0,0,.5)}
+body{min-height:100vh;background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,Arial,sans-serif;overflow:hidden}
+button,input,select,textarea{font:inherit}
+button{border:1px solid var(--line);background:var(--bg4);color:var(--text2);border-radius:var(--radius);padding:.58rem .85rem;font-weight:800;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--red);color:#fff}
+button:disabled,input:disabled,select:disabled,textarea:disabled{opacity:.55;cursor:not-allowed}
+.primary{background:var(--red);border-color:var(--red);color:#fff}
+.primary:hover{background:var(--red2)}
+.danger{border-color:#72242a;color:#ff9ea4}
+input,select,textarea{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);color:var(--text);padding:.62rem .75rem;outline:none;min-width:0}
+textarea{resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--red)}
+.muted{color:var(--text3)}
+.header{height:58px;background:linear-gradient(180deg,#000,rgba(0,0,0,.92));border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:.5rem 1rem;gap:1rem}
+.brand{display:flex;align-items:center;gap:.7rem;min-width:0}
+.logo{font-size:1.14rem;font-weight:950;color:var(--red);letter-spacing:.02em}
+.logo span{color:var(--text);font-weight:500}
+.logo-sub{font-size:.58rem;color:var(--text3);letter-spacing:.14em;text-transform:uppercase}
+.top-actions{display:flex;align-items:center;gap:.55rem}
+.db-badge{display:flex;align-items:center;gap:.45rem;background:var(--bg3);border:1px solid var(--line);border-radius:var(--radius);padding:.45rem .75rem;color:var(--text3);font-size:.76rem}
+.db-dot{width:8px;height:8px;border-radius:50%;background:var(--text3)}
+.db-dot.loaded{background:var(--green);box-shadow:0 0 10px var(--green)}
+.login{height:calc(100vh - 58px);display:flex;align-items:center;justify-content:center;padding:1rem;background:radial-gradient(circle at 20% 10%,rgba(229,9,20,.16),transparent 26%),#0d0d0d}
+.login-card{width:min(760px,96vw);background:linear-gradient(180deg,#202020,#151515);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.4rem}
+.login-title{font-size:1.7rem;font-weight:950;margin-bottom:.25rem}
+.login-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:1rem}
+.login-grid .full{grid-column:1/-1}
+.login-hint{margin-top:.8rem;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:.7rem;color:var(--text3);font-size:.82rem}
+.app{display:none;height:calc(100vh - 58px);grid-template-columns:260px minmax(0,1fr);overflow:hidden;transition:grid-template-columns .18s ease}
+.app.sidebar-collapsed{grid-template-columns:0 minmax(0,1fr)}
+.sidebar{background:var(--bg2);border-right:1px solid var(--line);padding:.8rem;display:flex;flex-direction:column;gap:.45rem;min-width:0;overflow:hidden;transition:width .18s ease,padding .18s ease,border .18s ease;width:260px}
+.sidebar.collapsed{width:0;padding-left:0;padding-right:0;border-right:0}
+.side-title{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:.3rem .2rem}
+.side-btn{text-align:left;width:100%}
+.side-btn.active{background:var(--red);border-color:var(--red);color:#fff}
+.content{min-width:0;min-height:0;width:100%;overflow:hidden;display:grid;grid-template-rows:auto 1fr}
+.toolbar{background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.55rem;padding:.65rem .8rem;position:sticky;top:0;z-index:12}
+.toolbar .spacer{flex:1}
+.view{display:none;min-height:0;overflow:auto;padding:.75rem}
+.view.active{display:block}
+.overview-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.65rem;margin-bottom:.75rem}
+.metric{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:1rem;min-width:0}
+.metric-num{font-size:1.65rem;color:var(--red);font-weight:950}
+.metric-label{font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.09em;margin-top:.15rem}
+.panel{background:var(--bg3);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.85rem 1rem;border-bottom:1px solid var(--line)}
+.panel-title{font-weight:950}
+.table-scroll{overflow:auto;min-height:0}
+table{width:100%;min-width:980px;border-collapse:collapse}
+th{position:sticky;top:0;z-index:2;background:var(--bg2);color:var(--text3);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;text-align:left;padding:.72rem .85rem;border-bottom:1px solid var(--line)}
+td{padding:.72rem .85rem;border-bottom:1px solid #242424;vertical-align:middle;font-size:.84rem;line-height:1.35}
+tr:hover td{background:rgba(255,255,255,.03)}
+.records-shell{display:grid;grid-template-rows:auto 1fr auto;min-height:calc(100vh - 156px)}
+.record-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;justify-content:flex-end}
+.title-search{width:min(360px,44vw)}
+.profile-cell{display:flex;align-items:center;gap:.65rem;min-width:210px}
+.avatar-stack{display:grid;justify-items:center;gap:.32rem;flex:0 0 auto}
+.avatar{width:58px;height:58px;border-radius:8px;border:1px solid var(--line2);object-fit:cover;background:var(--bg4)}
+.avatar-label{font-size:.62rem;color:var(--text2);border:1px solid var(--line);border-radius:999px;padding:.14rem .38rem;background:var(--bg2)}
+.pill{display:inline-flex;border-radius:999px;padding:.22rem .58rem;font-size:.72rem;font-weight:900;background:rgba(120,120,120,.16);color:var(--text2)}
+.pill.pending{background:rgba(245,197,24,.15);color:var(--gold)}
+.pill.updated,.pill.completed,.pill.handled{background:rgba(70,211,105,.15);color:var(--green)}
+.pill.contacted,.pill.active,.pill.interested{background:rgba(79,195,247,.15);color:var(--blue)}
+.manager-select{width:190px}
+.progress-wrap{height:8px;background:#2b2b2b;border-radius:999px;overflow:hidden;margin-top:.45rem}
+.progress-wrap span{display:block;height:100%;background:var(--red);width:0}
+.pagination{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem 1rem;border-top:1px solid var(--line)}
+.pager-buttons{display:flex;align-items:center;gap:.45rem}
+.admin-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:.75rem;align-items:start}
+.form-card{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:1rem;display:grid;gap:.65rem}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.8rem}
+.switch{position:relative;width:50px;height:28px;flex:0 0 auto}
+.switch input{display:none}
+.switch span{position:absolute;inset:0;background:#333;border:1px solid var(--line2);border-radius:999px;transition:.16s}
+.switch span:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#aaa;border-radius:50%;transition:.16s}
+.switch input:checked+span{background:rgba(70,211,105,.28);border-color:var(--green)}
+.switch input:checked+span:before{left:25px;background:var(--green)}
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.74);backdrop-filter:blur(8px);z-index:50;display:none;align-items:center;justify-content:center;padding:1rem}
+.modal{width:min(1180px,96vw);max-height:94vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.modal-head{position:sticky;top:0;background:var(--bg3);border-bottom:1px solid var(--line);padding:.9rem 1rem;display:flex;align-items:center;justify-content:space-between;z-index:4}
+.filter-drawer{position:fixed;right:1rem;top:72px;width:min(420px,calc(100vw - 2rem));z-index:44;background:var(--bg3);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);transform:translateX(calc(100% + 2rem));transition:transform .18s ease;overflow:hidden}
+.filter-drawer.open{transform:translateX(0)}
+.filter-grid{display:grid;grid-template-columns:1fr;gap:.7rem;padding:1rem}
+.profile{display:grid;grid-template-columns:300px minmax(0,1fr);gap:1rem;padding:1rem}
+.profile-side{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:1rem;text-align:center;height:fit-content;position:sticky;top:72px;align-self:start}
+.profile-img{width:166px;height:166px;border-radius:50%;border:4px solid var(--line);object-fit:cover;background:var(--bg4);margin-bottom:.55rem}
+.role-label{display:inline-flex;border:1px solid var(--line2);background:var(--bg2);border-radius:999px;padding:.25rem .65rem;color:var(--text2);font-size:.75rem;font-weight:900;margin-bottom:.75rem}
+.profile-actions{display:grid;gap:.5rem;margin-top:.75rem}
+.profile-main{display:grid;gap:.75rem;min-width:0}
+.profile-control-bar{display:flex;align-items:center;justify-content:space-between;gap:.6rem;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:.65rem .75rem;position:sticky;top:56px;z-index:3}
+.control-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:.6rem}
+.tab-btn.active{background:var(--red);border-color:var(--red);color:#fff}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+.info{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:.75rem;min-width:0}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
+.field{display:grid;gap:.25rem}
+.label{font-size:.64rem;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:.15rem}
+.value{overflow-wrap:anywhere}
+.custom-list,.history-list,.attendance-list{display:grid;gap:.5rem;margin-top:.65rem}
+.custom-row{display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem}
+.family-grid{display:grid;grid-template-columns:1fr;gap:.65rem}
+.family-card{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.75rem;display:grid;gap:.55rem}
+.family-head{display:flex;align-items:center;justify-content:space-between;gap:.65rem}
+.family-actions{display:flex;gap:.45rem;flex-wrap:wrap}
+.family-card .form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.attendance-bar{display:grid;grid-template-columns:1fr 210px auto;gap:.55rem;margin-top:.65rem}
+.attendance-row{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:.75rem;align-items:center;white-space:nowrap;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.62rem .7rem}
+.attendance-row b,.attendance-row span{overflow:hidden;text-overflow:ellipsis}
+.bulk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}
+.bulk-segments{display:grid;gap:.5rem;margin-top:.65rem}
+.bulk-row{display:grid;grid-template-columns:minmax(0,1fr) 120px minmax(0,1fr) auto;gap:.5rem;align-items:center}
+.account-actions{display:flex;gap:.4rem;flex-wrap:wrap}
+.history-item{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.65rem}
+.history-top{display:flex;align-items:center;justify-content:space-between;gap:.65rem;margin-bottom:.35rem}
+.history-changes{color:var(--text2);font-size:.8rem;line-height:1.45;overflow-wrap:anywhere}
+.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
+.edit-grid textarea{min-height:88px}
+.ai-drawer{position:fixed;right:1rem;bottom:1rem;width:min(460px,calc(100vw - 2rem));z-index:45;background:var(--bg3);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);display:none;overflow:hidden}
+.ai-body{padding:.85rem;display:grid;gap:.6rem}
+.ai-result{font-size:.82rem;color:var(--text2);line-height:1.45;min-height:46px}
+.glow{box-shadow:0 0 0 1px rgba(229,9,20,.35),0 0 22px rgba(229,9,20,.32)}
+.empty{display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);min-height:150px;padding:2rem}
+.toast{position:fixed;right:1rem;bottom:1rem;z-index:90;background:#111;border:1px solid var(--line);border-left:4px solid var(--red);border-radius:10px;padding:.8rem 1rem;box-shadow:var(--shadow);display:none;max-width:min(420px,92vw);color:var(--text2)}
+.admin-only,.executor-only{display:none}
+body.is-admin .admin-only{display:initial}
+body.is-admin .admin-only.block{display:block}
+body.is-admin .admin-only.grid{display:grid}
+body.is-admin .view.admin-only{display:none}
+body.is-admin .view.admin-only.active{display:block}
+body.is-executor .executor-only{display:initial}
+body.is-executor .executor-only.block{display:block}
+@media(max-width:1100px){body{overflow:auto}.app{height:auto;min-height:calc(100vh - 58px);grid-template-columns:1fr}.app.sidebar-collapsed{grid-template-columns:1fr}.sidebar{position:fixed;z-index:30;top:58px;bottom:0}.overview-grid,.admin-grid,.profile,.form-grid,.family-grid,.bulk-grid{grid-template-columns:1fr}.profile-side{position:relative;top:auto}.records-shell{min-height:620px}.title-search{width:100%}.record-actions{justify-content:flex-start}.panel-head{align-items:flex-start;flex-direction:column}}
+@media(max-width:720px){.header{height:auto;align-items:flex-start;flex-direction:column}.top-actions{width:100%;justify-content:space-between;flex-wrap:wrap}.login,.app{min-height:calc(100vh - 92px)}.login-grid,.edit-grid,.family-card .form-grid,.attendance-bar,.custom-row,.bulk-row,.attendance-row{grid-template-columns:1fr}.toolbar{overflow:auto}.overview-grid{grid-template-columns:1fr}.pagination{align-items:flex-start;flex-direction:column}.filter-drawer{top:104px}}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="brand">
+    <button id="sideToggle" onclick="toggleSidebar()" style="display:none">Menu</button>
+    <div>
+      <div class="logo">QUANTUM <span>| Work Management</span></div>
+      <div class="logo-sub">Neon PostgreSQL + Cloudinary Analytics</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <div class="db-badge"><span class="db-dot" id="dbDot"></span><span id="dbLabel">Not connected</span></div>
+    <span class="muted" id="topUser"></span>
+    <button id="logoutBtn" onclick="logout()" style="display:none">Logout</button>
+  </div>
+</header>
+
+<section class="login" id="loginScreen">
+  <div class="login-card">
+    <div class="login-title">Software Login</div>
+    <div class="muted">Admin and Executive accounts only. Regular users do not have software access.</div>
+    <div class="login-grid">
+      <select id="loginRole" class="full">
+        <option value="admin">Admin</option>
+        <option value="executor">Executive</option>
+      </select>
+      <input id="email" type="email" placeholder="Email" autocomplete="username">
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="primary full" onclick="login()">Login</button>
+    </div>
+    <div class="login-hint">Default admin seed: admin@quantum.local / admin123. Active executive credentials are managed by Admin.</div>
+  </div>
+</section>
+
+<main class="app" id="appShell">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-title">Dashboard Menu</div>
+    <button class="side-btn" id="navOverview" onclick="switchView('overview')">Overview Dashboard</button>
+    <button class="side-btn" id="navRecords" onclick="switchView('records')">All User Records</button>
+    <button class="side-btn admin-only" id="navAccounts" onclick="switchView('accounts')">Executive Accounts</button>
+    <button class="side-btn admin-only" id="navSettings" onclick="switchView('settings')">Admin Settings</button>
+  </aside>
+
+  <section class="content">
+    <div class="toolbar">
+      <b id="viewTitle">Overview Dashboard</b>
+      <span class="muted" id="roleLabel"></span>
+      <span class="spacer"></span>
+      <button id="filterBtn" onclick="toggleFilters()">Filters</button>
+      <button id="aiBtn" class="admin-only glow" onclick="toggleAiChat()">AI Chat</button>
+      <select id="pageSize" onchange="loadRecords(true)">
+        <option>25</option>
+        <option selected>50</option>
+        <option>100</option>
+        <option>250</option>
+        <option>500</option>
+      </select>
+    </div>
+
+    <section id="overviewView" class="view">
+      <div class="overview-grid">
+        <div class="metric"><div class="metric-num" id="mTotal">0</div><div class="metric-label" id="mTotalLabel">Total Data Count</div></div>
+        <div class="metric"><div class="metric-num" id="mPending">0</div><div class="metric-label" id="mPendingLabel">Total Pending Tasks</div></div>
+        <div class="metric"><div class="metric-num" id="mCompleted">0</div><div class="metric-label" id="mCompletedLabel">Total Completed Tasks</div></div>
+        <div class="metric"><div class="metric-num" id="mUpdated">0</div><div class="metric-label" id="mUpdatedLabel">Total Updated Profiles</div></div>
+      </div>
+      <section class="panel" id="progressPanel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Executive Progress Matrix</div>
+            <div class="muted">Assigned, completed, and real-time completion percentage.</div>
+          </div>
+          <button onclick="loadOverview()">Refresh</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Executive</th><th>Assigned Users</th><th>Completed Tasks</th><th>Completion</th></tr></thead>
+            <tbody id="progressBody"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel admin-only block" id="bulkPanel" style="margin-top:.75rem">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Bulk Task Assignment</div>
+            <div class="muted">Sequentially allocate the pending queue by custom segment sizes.</div>
+          </div>
+          <div class="record-actions">
+            <button onclick="addBulkSegment()">Add Segment</button>
+            <button class="primary" onclick="allocateBulkQueue()">Allocate Queue</button>
+          </div>
+        </div>
+        <div style="padding:1rem">
+          <div class="bulk-grid">
+            <div class="metric"><div class="metric-num" id="bulkPending">0</div><div class="metric-label">Total Pending Queue Records</div></div>
+            <div class="metric"><div class="metric-num" id="bulkAllocated">0</div><div class="metric-label">Tasks Allocated in Last Bulk Run</div></div>
+            <div class="metric"><div class="metric-num" id="bulkRemaining">0</div><div class="metric-label">Remaining Unassigned Core Records</div></div>
+          </div>
+          <div class="bulk-segments" id="bulkSegments"></div>
+        </div>
+      </section>
+    </section>
+
+    <section id="recordsView" class="view">
+      <section class="panel records-shell">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">All User Records</div>
+            <div class="muted" id="pageSummary">No rows loaded</div>
+          </div>
+          <div class="record-actions">
+            <input id="recordSearch" class="title-search" placeholder="Search name, mobile, or location" oninput="debouncedSearch()">
+            <button onclick="loadRecords(true)">Refresh</button>
+            <button onclick="clearFilters()">Clear Filters</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Profile</th><th>Name</th><th>Personal Data</th><th>Problem</th><th>Stage</th><th>Assigned Executive</th><th>Task</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"><tr><td colspan="7"><div class="empty">Login to load data</div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <div class="muted" id="paginationText">Page 0 of 0</div>
+          <div class="pager-buttons">
+            <button onclick="changePage(-1)" id="prevPage">Prev</button>
+            <button onclick="changePage(1)" id="nextPage">Next</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="accountsView" class="view admin-only block">
+      <div class="admin-grid">
+        <section class="panel">
+          <div class="panel-head">
+            <div><div class="panel-title">Executive Login Credentials</div><div class="muted">Promoted Executive profiles appear here automatically.</div></div>
+            <button onclick="loadUsers()">Refresh</button>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th>Password</th><th>Actions</th></tr></thead>
+              <tbody id="usersBody"></tbody>
+            </table>
+          </div>
+        </section>
+        <aside class="form-card">
+          <div class="panel-title">Create Software Account</div>
+          <input id="newName" placeholder="Name">
+          <input id="newEmail" type="email" placeholder="Email">
+          <input id="newPassword" type="password" placeholder="Password">
+          <select id="newRole"><option value="executor">Executive</option><option value="admin">Admin</option></select>
+          <button class="primary" onclick="createUser()">Create Account</button>
+        </aside>
+      </div>
+    </section>
+
+    <section id="settingsView" class="view admin-only block">
+      <div class="admin-grid">
+        <section class="form-card">
+          <div><div class="panel-title">Permission Manager</div><div class="muted">Controls whether Executives can add or modify user personal data.</div></div>
+          <div class="switch-row">
+            <div>
+              <b>Executive personal-data editing</b>
+              <div class="muted">When revoked, Executive profile data forms are read-only.</div>
+            </div>
+            <label class="switch"><input id="permExecutiveEdit" type="checkbox"><span></span></label>
+          </div>
+          <button class="primary" onclick="savePermissionSettings()">Save Permission</button>
+        </section>
+        <section class="form-card">
+          <div><div class="panel-title">AI Provider Settings</div><div class="muted">Keys are encrypted on the server and never displayed back.</div></div>
+          <select id="aiVendor" onchange="renderAiModels()">
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+          <select id="aiModelSelect"></select>
+          <input id="aiApiKey" type="password" placeholder="API token / key">
+          <button class="primary" onclick="saveAiSettings()">Save & Initialize</button>
+          <div id="providerStatus"></div>
+        </section>
+      </div>
+    </section>
+  </section>
+</main>
+
+<div class="filter-drawer" id="filterDrawer">
+  <div class="modal-head"><b>Advanced Filters</b><button onclick="toggleFilters(false)">Close</button></div>
+  <div class="filter-grid">
+    <select id="stageFilter"><option value="">All Stage</option></select>
+    <select id="statusFilter"><option value="">All Task</option></select>
+    <select id="assignedFilter" class="admin-only"><option value="">All Executives</option></select>
+    <input id="locationFilter" placeholder="Location">
+    <input id="minAgeFilter" type="number" min="0" placeholder="Min age">
+    <input id="maxAgeFilter" type="number" min="0" placeholder="Max age">
+    <button class="primary" onclick="applyFilters()">Apply Filters</button>
+  </div>
+</div>
+
+<div class="ai-drawer" id="aiDrawer">
+  <div class="modal-head"><b>LangChain SQL Agent</b><button onclick="toggleAiChat()">Close</button></div>
+  <div class="ai-body">
+    <textarea id="aiQuestion" rows="3" placeholder="Ask: Show pending users from Dhaka over 30"></textarea>
+    <button class="primary" onclick="askAi()">Ask and Filter Records</button>
+    <div class="ai-result" id="aiResult">The agent inspects schema metadata, plans safe PostgreSQL filters, and executes the query.</div>
+  </div>
+</div>
+
+<div class="modal-back" id="profileModal">
+  <div class="modal">
+    <div class="modal-head"><b id="modalTitle">Profile</b><button onclick="closeProfile()">Close</button></div>
+    <div class="profile">
+      <aside class="profile-side">
+        <img id="pImg" class="profile-img" alt="Profile">
+        <div id="profileClass" class="role-label">User</div>
+        <div class="panel-title" id="pName">-</div>
+        <div class="muted" id="pId">-</div>
+        <div class="profile-actions">
+          <a id="callMobile" class="primary" style="text-decoration:none;border-radius:8px;padding:.58rem .85rem;font-weight:800" href="#">Call Mobile</a>
+          <input type="file" id="imgUpload" accept="image/*" style="display:none" onchange="uploadImage(this)">
+          <button id="uploadBtn" onclick="document.getElementById('imgUpload').click()">Upload Image</button>
+        </div>
+      </aside>
+      <section class="profile-main">
+        <div class="profile-control-bar">
+          <div>
+            <div class="panel-title">Profile Workspace</div>
+            <div class="muted" id="profileEditState">Read-only mode</div>
+          </div>
+          <div class="control-actions">
+            <button id="profileEditBtn" onclick="setProfileEditMode(true)">Edit Profile</button>
+            <button id="profileCancelBtn" onclick="cancelProfileEdit()" style="display:none">Cancel</button>
+            <button id="profileSaveBtn" class="primary" onclick="saveProfile()" style="display:none">Save</button>
+          </div>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn active" id="tabBtnPersonal" onclick="switchProfileTab('personal')">Personal Information</button>
+          <button class="tab-btn" id="tabBtnFamily" onclick="switchProfileTab('family')">Family Info</button>
+          <button class="tab-btn" id="tabBtnAttendance" onclick="switchProfileTab('attendance')">Program Attendance</button>
+        </div>
+
+        <div id="tabPersonal" class="tab-panel active info">
+          <div class="form-grid">
+            <div class="field"><div class="label">Full Name</div><input data-personal="full_name"></div>
+            <div class="field"><div class="label">Email</div><input data-personal="email" type="email"></div>
+            <div class="field"><div class="label">Mobile</div><input data-personal="mobile"></div>
+            <div class="field"><div class="label">Father's Name</div><input data-personal="father_name"></div>
+            <div class="field"><div class="label">Mother's Name</div><input data-personal="mother_name"></div>
+            <div class="field"><div class="label">Date of Birth</div><input data-personal="date_of_birth" type="date"></div>
+            <div class="field"><div class="label">Marital Status</div><select data-personal="marital_status"><option value=""></option><option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option></select></div>
+            <div class="field"><div class="label">Blood Group</div><select data-personal="blood_group"><option value=""></option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></div>
+            <div class="field"><div class="label">Occupation</div><input data-personal="occupation"></div>
+            <div class="field admin-only"><div class="label">System Classification</div><select id="profileClassification"><option>User</option><option>Executive</option><option>Admin</option></select></div>
+            <div class="field"><div class="label">Present Address</div><textarea data-personal="present_address" rows="3"></textarea></div>
+            <div class="field"><div class="label">Permanent Address</div><textarea data-personal="permanent_address" rows="3"></textarea></div>
+          </div>
+          <div class="history-top" style="margin-top:.8rem">
+            <div><div class="label">Custom Fields</div><div class="muted">Add scalable profile fields as needed.</div></div>
+            <button onclick="addCustomField()">Add Custom Field</button>
+          </div>
+          <div class="custom-list" id="customFields"></div>
+        </div>
+
+        <div id="tabFamily" class="tab-panel info">
+          <div class="history-top">
+            <div><div class="label">Family Members</div><div class="muted">Dynamic nested records are stored in the profile JSONB payload.</div></div>
+            <div class="family-actions">
+              <button onclick="addFamilyCustomField()">Add Custom Field</button>
+              <button onclick="addFamilyMember()">Add New Family Member</button>
+            </div>
+          </div>
+          <div class="family-grid" id="familyGrid"></div>
+        </div>
+
+        <div id="tabAttendance" class="tab-panel info">
+          <div class="history-top">
+            <div><div class="label">Attendance Summary</div><div class="muted" id="attendanceSummary">No attendance recorded</div></div>
+          </div>
+          <div class="attendance-bar">
+            <input id="attendanceEvent" placeholder="Program or event name">
+            <input id="attendanceTime" type="datetime-local">
+            <button onclick="addAttendance()">Add Attendance</button>
+          </div>
+          <div class="attendance-list" id="attendanceList"></div>
+        </div>
+
+        <div class="info admin-only block">
+          <div class="label">Admin Task Assignment</div>
+          <div class="edit-grid">
+            <select id="profileExecutive"></select>
+            <textarea id="assignInstruction" placeholder="Instruction for Executive"></textarea>
+          </div>
+          <button class="primary" style="margin-top:.6rem" onclick="assignSelected()">Assign / Reassign</button>
+        </div>
+
+        <div class="info">
+          <div class="label">Update Call Details</div>
+          <div class="edit-grid">
+            <select id="editStage"></select>
+            <textarea id="editProblem" placeholder="Problem"></textarea>
+            <textarea id="editRemarks" placeholder="Remarks"></textarea>
+            <textarea id="callNotes" placeholder="Call notes for audit history"></textarea>
+          </div>
+        </div>
+
+        <div class="info">
+          <div class="history-top">
+            <div><div class="label">Change History / User Call Log</div><div class="muted">Executives can view history; only Admin can remove it.</div></div>
+            <button class="danger admin-only" onclick="clearHistory()">Clear History</button>
+          </div>
+          <div class="history-list" id="historyList"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CALL_STAGES = ['Interested','Active','Inactive','Pending','Completed','Handled','Dropped','Counselling','Follow Up'];
+const FAMILY_ROLES = [
+  ['father','Father'],
+  ['mother','Mother'],
+  ['wife','Wife'],
+  ['child','Child']
+];
+const FAMILY_FIELDS = [
+  ['full_name','Full Name'],
+  ['email','Email'],
+  ['age','Age'],
+  ['mobile','Mobile Number'],
+  ['blood_group','Blood Group']
+];
+const PERSONAL_TO_API = {
+  full_name:'Full Name',
+  email:'Email',
+  mobile:'Mobile',
+  father_name:"Father's Name",
+  mother_name:"Mother's Name",
+  date_of_birth:'Date of Birth',
+  marital_status:'Marital Status',
+  blood_group:'Blood Group',
+  occupation:'Occupation',
+  present_address:'Present Address',
+  permanent_address:'Permanent Address'
+};
+let token = localStorage.getItem('token') || '';
+let currentUser = parseJson(localStorage.getItem('user'), null);
+let rows = [];
+let selected = null;
+let executives = [];
+let schema = null;
+let permissions = { executive_can_edit_personal_data: true };
+let pagination = { page: 1, pageSize: 50, total: 0, totalPages: 1, hasPrev: false, hasNext: false };
+const API = resolveApiBase();
+
+function parseJson(raw, fallback){try{return raw?JSON.parse(raw):fallback}catch{return fallback}}
+function resolveApiBase(){const configured=(window.API_BASE_URL||localStorage.getItem('apiBaseUrl')||'').trim();return configured?configured.replace(/\/+$/,''):(window.location.protocol==='file:'?'http://localhost:3000':'')}
+function apiUrl(path){return API+(path.startsWith('/')?path:'/'+path)}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function attr(v){return esc(v).replace(/`/g,'&#096;')}
+function roleName(role){return role==='executor'?'Executive':role==='admin'?'Admin':'User'}
+function canEditPersonal(){return currentUser?.role==='admin' || permissions.executive_can_edit_personal_data}
+
+async function apiFetch(path, options={}){
+  const headers={...(options.headers||{})};
+  if(token) headers.Authorization='Bearer '+token;
+  if(options.body && !(options.body instanceof FormData) && !headers['Content-Type']) headers['Content-Type']='application/json';
+  const response=await fetch(apiUrl(path), {...options, headers});
+  const text=await response.text();
+  let data={};
+  try{data=text?JSON.parse(text):{}}catch{throw new Error('Invalid server response')}
+  if(!response.ok || data.ok===false) throw new Error(data.message||'Request failed');
+  return data;
+}
+
+function showToast(message){
+  const box=document.getElementById('toast');
+  box.textContent=message;
+  box.style.display='block';
+  clearTimeout(showToast.timer);
+  showToast.timer=setTimeout(()=>box.style.display='none',3600);
+}
+
+async function health(){
+  try{
+    const data=await apiFetch('/api/health');
+    document.getElementById('dbDot').className='db-dot loaded';
+    document.getElementById('dbLabel').textContent=`Neon connected (${data.total_rows})`;
+  }catch{
+    document.getElementById('dbDot').className='db-dot';
+    document.getElementById('dbLabel').textContent=API?'Server failed: '+API:'Server failed';
+  }
+}
+
+async function login(){
+  try{
+    const data=await apiFetch('/api/auth/login',{method:'POST',body:JSON.stringify({role:document.getElementById('loginRole').value,email:document.getElementById('email').value.trim(),password:document.getElementById('password').value})});
+    token=data.token;
+    currentUser=data.user;
+    localStorage.setItem('token',token);
+    localStorage.setItem('user',JSON.stringify(currentUser));
+    await boot();
+  }catch(error){showToast(error.message||'Login failed')}
+}
+
+function logout(){
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  token='';
+  currentUser=null;
+  rows=[];
+  selected=null;
+  document.body.classList.remove('is-admin','is-executor');
+  document.getElementById('appShell').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('logoutBtn').style.display='none';
+  document.getElementById('sideToggle').style.display='none';
+  document.getElementById('topUser').textContent='';
+}
+
+async function boot(){
+  await health();
+  if(token){
+    try{
+      const data=await apiFetch('/api/auth/me');
+      currentUser=data.user;
+      localStorage.setItem('user',JSON.stringify(currentUser));
+    }catch{return logout()}
+  }
+  if(!currentUser) return logout();
+  document.body.classList.toggle('is-admin',currentUser.role==='admin');
+  document.body.classList.toggle('is-executor',currentUser.role==='executor');
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appShell').style.display='grid';
+  document.getElementById('logoutBtn').style.display='inline-block';
+  document.getElementById('sideToggle').style.display='inline-block';
+  document.getElementById('topUser').textContent=currentUser.name;
+  document.getElementById('roleLabel').textContent=`${currentUser.name} (${roleName(currentUser.role)})`;
+  await Promise.all([loadMeta(), loadExecutives(), loadPermissions()]);
+  renderFilterOptions();
+  renderStageSelect();
+  if(currentUser.role==='admin'){
+    await Promise.all([loadOverview(), loadUsers(), loadAiSettings()]);
+  }else{
+    await loadExecutiveOverview();
+  }
+  switchView('overview');
+}
+
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('collapsed');
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+}
+
+function switchView(view){
+  if(view==='accounts' && currentUser?.role!=='admin') return;
+  if(view==='settings' && currentUser?.role!=='admin') return;
+  for(const el of document.querySelectorAll('.view')) el.classList.remove('active');
+  for(const el of document.querySelectorAll('.side-btn')) el.classList.remove('active');
+  document.getElementById(view+'View').classList.add('active');
+  document.getElementById('nav'+view[0].toUpperCase()+view.slice(1))?.classList.add('active');
+  document.getElementById('viewTitle').textContent={overview:'Overview Dashboard',records:'All User Records',accounts:'Executive Accounts',settings:'Admin Settings'}[view]||'Dashboard';
+  document.getElementById('filterBtn').style.display=view==='records'?'inline-block':'none';
+  document.getElementById('pageSize').style.display=view==='records'?'inline-block':'none';
+  document.getElementById('aiBtn').style.display=(view==='records'&&currentUser?.role==='admin')?'inline-block':'none';
+  if(view!=='records') toggleFilters(false);
+  if(view==='overview') currentUser?.role==='admin'?loadOverview():loadExecutiveOverview();
+  if(view==='records') loadRecords(true);
+  if(view==='settings') { loadPermissions(); loadAiSettings(); }
+}
+
+async function loadMeta(){const data=await apiFetch('/api/dataset-meta');schema=data.schema}
+async function loadExecutives(){const data=await apiFetch('/api/executives');executives=data.executives||[]}
+async function loadPermissions(){
+  if(!currentUser) return;
+  try{
+    const data=await apiFetch('/api/settings/permissions');
+    permissions=data.settings||permissions;
+    const toggle=document.getElementById('permExecutiveEdit');
+    if(toggle) toggle.checked=permissions.executive_can_edit_personal_data!==false;
+  }catch{}
+}
+
+function renderFilterOptions(){
+  document.getElementById('stageFilter').innerHTML='<option value="">All Stage</option>'+CALL_STAGES.map(s=>`<option value="${attr(s)}">${esc(s)}</option>`).join('');
+  document.getElementById('statusFilter').innerHTML='<option value="">All Task</option><option value="__unassigned">Unassigned</option><option>Pending</option><option>Updated</option><option>Completed</option><option>Handled</option>';
+  document.getElementById('assignedFilter').innerHTML='<option value="">All Executives</option><option value="__unassigned">Unassigned</option>'+executives.map(e=>`<option value="${attr(e.id)}">${esc(e.name)}</option>`).join('');
+  renderProfileExecutiveOptions();
+}
+
+function renderStageSelect(){
+  document.getElementById('editStage').innerHTML=CALL_STAGES.map(s=>`<option value="${attr(s)}">${esc(s)}</option>`).join('');
+}
+
+function renderProfileExecutiveOptions(){
+  const select=document.getElementById('profileExecutive');
+  if(select) select.innerHTML=executives.map(e=>`<option value="${attr(e.id)}">${esc(e.name)} (${esc(e.email)})</option>`).join('');
+}
+
+async function loadOverview(){
+  if(currentUser?.role!=='admin') return loadExecutiveOverview();
+  try{
+    const data=await apiFetch('/api/dashboard/overview');
+    const overview=data.overview||{};
+    document.getElementById('mTotalLabel').textContent='Total Data Count';
+    document.getElementById('mPendingLabel').textContent='Total Pending Tasks';
+    document.getElementById('mCompletedLabel').textContent='Total Completed Tasks';
+    document.getElementById('mUpdatedLabel').textContent='Total Updated Profiles';
+    document.getElementById('mTotal').textContent=overview.total_data_count||0;
+    document.getElementById('mPending').textContent=overview.total_pending_tasks||0;
+    document.getElementById('mCompleted').textContent=overview.total_completed_tasks||0;
+    document.getElementById('mUpdated').textContent=overview.total_updated_profiles||0;
+    document.getElementById('progressPanel').style.display='block';
+    document.getElementById('progressBody').innerHTML=(overview.executive_progress||[]).map(e=>{
+      const percent=Number(e.completion_percentage||0);
+      return `<tr><td><b>${esc(e.name)}</b><div class="muted">${esc(e.email)}</div></td><td>${e.assigned_count}</td><td>${e.completed_count}</td><td><b>${percent}%</b><div class="progress-wrap"><span style="width:${Math.min(100,percent)}%"></span></div></td></tr>`;
+    }).join('')||'<tr><td colspan="4"><div class="empty">No active executives found</div></td></tr>';
+  }catch(error){showToast(error.message||'Overview failed')}
+}
+
+async function loadExecutiveOverview(){
+  if(currentUser?.role!=='executor') return;
+  try{
+    const data=await apiFetch('/api/dashboard/executive');
+    const overview=data.overview||{};
+    document.getElementById('mTotalLabel').textContent='New Tasks';
+    document.getElementById('mPendingLabel').textContent='Previous Pending Tasks';
+    document.getElementById('mCompletedLabel').textContent='Completed Tasks';
+    document.getElementById('mUpdatedLabel').textContent='Total Assigned';
+    document.getElementById('mTotal').textContent=overview.new_tasks||0;
+    document.getElementById('mPending').textContent=overview.previous_pending_tasks||0;
+    document.getElementById('mCompleted').textContent=overview.completed_tasks||0;
+    document.getElementById('mUpdated').textContent=overview.total_assigned||0;
+    document.getElementById('progressPanel').style.display='none';
+  }catch(error){showToast(error.message||'Executive overview failed')}
+}
+
+function collectFilters(){
+  return {
+    search:document.getElementById('recordSearch').value.trim(),
+    stage:document.getElementById('stageFilter').value,
+    task_status:document.getElementById('statusFilter').value,
+    assigned_to:currentUser?.role==='admin'?document.getElementById('assignedFilter').value:'',
+    location:document.getElementById('locationFilter').value.trim(),
+    min_age:document.getElementById('minAgeFilter').value.trim(),
+    max_age:document.getElementById('maxAgeFilter').value.trim()
+  };
+}
+
+function queryString(extra={}){
+  const params=new URLSearchParams();
+  for(const [key,value] of Object.entries({...collectFilters(),...extra})){
+    if(value!==undefined&&value!==null&&String(value).trim()!=='') params.set(key,value);
+  }
+  return params.toString();
+}
+
+function debouncedSearch(){
+  clearTimeout(debouncedSearch.timer);
+  debouncedSearch.timer=setTimeout(()=>loadRecords(true),240);
+}
+
+async function loadRecords(resetPage=false){
+  if(resetPage) pagination.page=1;
+  pagination.pageSize=Number(document.getElementById('pageSize').value||50);
+  renderRecordsLoading('Loading records...');
+  try{
+    const data=await apiFetch('/api/dataset-rows?'+queryString({page:pagination.page,pageSize:pagination.pageSize}));
+    rows=data.rows||[];
+    pagination=data.pagination||pagination;
+    renderRows();
+    renderPagination();
+  }catch(error){
+    rows=[];
+    renderRecordsLoading(error.message||'Load failed');
+  }
+}
+
+function renderRecordsLoading(message){document.getElementById('tbody').innerHTML=`<tr><td colspan="7"><div class="empty">${esc(message)}</div></td></tr>`}
+function noImageSvg(){return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22%23222%22/%3E%3Ctext x=%2250%22 y=%2256%22 font-size=%2216%22 fill=%22%23777%22 text-anchor=%22middle%22%3ENo Image%3C/text%3E%3C/svg%3E'}
+
+function managerOptions(row){
+  if(currentUser?.role!=='admin') return esc(row.assigned_to_name||'Unassigned');
+  const options=['<option value="">Assign</option>'].concat(executives.map(e=>`<option value="${attr(e.id)}" ${e.id===row.assigned_to?'selected':''}>${esc(e.name)}</option>`)).join('');
+  return `<select class="manager-select" onchange="assignFromRow('${attr(row.id)}',this.value)">${options}</select>`;
+}
+
+function renderRows(){
+  if(!rows.length){renderRecordsLoading(currentUser?.role==='executor'?'No assigned records found for this executive.':'No records found.');return}
+  document.getElementById('tbody').innerHTML=rows.map(row=>{
+    const img=row.image_url||noImageSvg();
+    const taskClass=String(row.task_status||'pending').toLowerCase();
+    const classification=row.profile_classification||'User';
+    return `<tr>
+      <td><div class="profile-cell"><div class="avatar-stack"><img class="avatar" src="${attr(img)}" alt=""><span class="avatar-label">${esc(classification)}</span></div><button class="primary" onclick="openProfile('${attr(row.id)}')">View Profile</button></div></td>
+      <td><b>${esc(row.name||'-')}</b><div class="muted">${esc(row.email||'No email')} | Row ${esc(row.row_number)}</div></td>
+      <td><div>${esc(row.mobile||'-')}</div><div class="muted">${esc(row.age||'-')} | ${esc(row.location||row.present_address||'-')}</div></td>
+      <td>${esc(row.problem||'-')}</td>
+      <td>${esc(row.stage||'-')}</td>
+      <td>${managerOptions(row)}<div class="muted">${esc(row.assigned_to_name||'Unassigned')}</div></td>
+      <td><span class="pill ${attr(taskClass)}">${esc(row.task_status||'Unassigned')}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPagination(){
+  document.getElementById('paginationText').textContent=`Page ${pagination.page} of ${pagination.totalPages} - ${pagination.total} matching records`;
+  document.getElementById('pageSummary').textContent=`${rows.length} records loaded from ${pagination.total}`;
+  document.getElementById('prevPage').disabled=!pagination.hasPrev;
+  document.getElementById('nextPage').disabled=!pagination.hasNext;
+}
+
+function changePage(delta){
+  const next=pagination.page+delta;
+  if(next<1||next>pagination.totalPages) return;
+  pagination.page=next;
+  loadRecords(false);
+}
+
+function toggleFilters(force){
+  const drawer=document.getElementById('filterDrawer');
+  const open=force===undefined?!drawer.classList.contains('open'):Boolean(force);
+  drawer.classList.toggle('open',open);
+}
+function applyFilters(){toggleFilters(false);loadRecords(true)}
+function clearFilters(){
+  document.getElementById('recordSearch').value='';
+  for(const id of ['locationFilter','minAgeFilter','maxAgeFilter']) document.getElementById(id).value='';
+  for(const id of ['stageFilter','statusFilter','assignedFilter']){const el=document.getElementById(id);if(el)el.value=''}
+  loadRecords(true);
+}
+
+async function assignFromRow(rowId,assignedTo){
+  if(!assignedTo) return;
+  try{
+    const data=await apiFetch('/api/tasks/assign',{method:'POST',body:JSON.stringify({row_id:rowId,assigned_to:assignedTo,admin_instruction:''})});
+    showToast(data.message||'Assigned');
+    await Promise.all([loadRecords(false),loadOverview()]);
+  }catch(error){showToast(error.message||'Assign failed');renderRows()}
+}
+
+async function openProfile(id){
+  selected=rows.find(row=>String(row.id)===String(id));
+  if(!selected) return;
+  document.getElementById('profileModal').style.display='flex';
+  document.getElementById('modalTitle').textContent=selected.name||'Profile';
+  document.getElementById('pName').textContent=selected.name||'-';
+  document.getElementById('pId').textContent=`ID: ${selected.id} | Row: ${selected.row_number}`;
+  document.getElementById('pImg').src=selected.image_url||noImageSvg();
+  document.getElementById('profileClass').textContent=selected.profile_classification||'User';
+  document.getElementById('callMobile').href=selected.mobile?'tel:'+selected.mobile:'#';
+  document.getElementById('editStage').value=CALL_STAGES.includes(selected.stage)?selected.stage:'Interested';
+  document.getElementById('editProblem').value=selected.problem||'';
+  document.getElementById('editRemarks').value=selected.remarks||'';
+  document.getElementById('callNotes').value='';
+  document.getElementById('assignInstruction').value=selected.admin_instruction||'';
+  renderProfileExecutiveOptions();
+  if(selected.assigned_to) document.getElementById('profileExecutive').value=selected.assigned_to;
+  fillPersonalForm();
+  renderCustomFields();
+  renderFamilyInfo();
+  renderAttendance();
+  applyProfilePermissions();
+  switchProfileTab('personal');
+  loadHistory(selected.id);
+  if(currentUser?.role==='executor') markProfileRead(selected.id);
+}
+
+async function markProfileRead(id){
+  try{
+    const data=await apiFetch('/api/dataset-rows/'+encodeURIComponent(id)+'/read',{method:'POST'});
+    if(data.updated) await loadExecutiveOverview();
+  }catch{}
+}
+
+function fillPersonalForm(){
+  const values={
+    full_name:selected.full_name||selected.name||'',
+    email:selected.email||'',
+    mobile:selected.mobile||'',
+    father_name:selected.father_name||'',
+    mother_name:selected.mother_name||'',
+    date_of_birth:selected.date_of_birth||'',
+    marital_status:selected.marital_status||'',
+    blood_group:selected.blood_group||'',
+    occupation:selected.occupation||selected.profession||'',
+    present_address:selected.present_address||selected.location||'',
+    permanent_address:selected.permanent_address||''
+  };
+  for(const input of document.querySelectorAll('[data-personal]')){
+    input.value=values[input.dataset.personal]||'';
+  }
+  document.getElementById('profileClassification').value=selected.profile_classification||'User';
+}
+
+function applyProfilePermissions(){
+  const locked=!canEditPersonal();
+  for(const el of document.querySelectorAll('#tabPersonal input,#tabPersonal select,#tabPersonal textarea,#tabFamily input,#tabFamily select,#tabFamily textarea,#tabAttendance input,#tabAttendance button')){
+    el.disabled=locked;
+  }
+  document.getElementById('profileClassification').disabled=currentUser?.role!=='admin';
+  document.getElementById('uploadBtn').disabled=locked;
+}
+
+function switchProfileTab(tab){
+  for(const el of document.querySelectorAll('.tab-panel')) el.classList.remove('active');
+  for(const el of document.querySelectorAll('.tab-btn')) el.classList.remove('active');
+  document.getElementById('tab'+tab[0].toUpperCase()+tab.slice(1)).classList.add('active');
+  document.getElementById('tabBtn'+tab[0].toUpperCase()+tab.slice(1)).classList.add('active');
+}
+
+function renderCustomFields(){
+  const fields=selected.custom_fields&&typeof selected.custom_fields==='object'?selected.custom_fields:{};
+  const entries=Object.entries(fields);
+  document.getElementById('customFields').innerHTML=entries.map(([key,value],index)=>`<div class="custom-row" data-custom-index="${index}">
+    <input data-custom-key value="${attr(key)}" placeholder="Field name">
+    <input data-custom-value value="${attr(value)}" placeholder="Field value">
+    <button class="danger" onclick="removeCustomField(${index})">Remove</button>
+  </div>`).join('')||'<div class="muted">No custom fields yet.</div>';
+  applyProfilePermissions();
+}
+
+function addCustomField(){
+  if(!selected||!canEditPersonal()) return;
+  selected.custom_fields=selected.custom_fields&&typeof selected.custom_fields==='object'?selected.custom_fields:{};
+  let i=Object.keys(selected.custom_fields).length+1;
+  let key=`Custom Field ${i}`;
+  while(Object.prototype.hasOwnProperty.call(selected.custom_fields,key)) key=`Custom Field ${++i}`;
+  selected.custom_fields[key]='';
+  renderCustomFields();
+}
+
+function removeCustomField(index){
+  if(!selected||!canEditPersonal()) return;
+  const entries=Object.entries(selected.custom_fields||{});
+  entries.splice(index,1);
+  selected.custom_fields=Object.fromEntries(entries);
+  renderCustomFields();
+}
+
+function renderFamilyInfo(){
+  const info=selected.family_info&&typeof selected.family_info==='object'?selected.family_info:{};
+  document.getElementById('familyGrid').innerHTML=FAMILY_ROLES.map(([role,label])=>{
+    const member=info[role]||{};
+    const fields=FAMILY_FIELDS.map(([field,fieldLabel])=>`<div class="field"><div class="label">${esc(fieldLabel)}</div><input data-family-role="${attr(role)}" data-family-field="${attr(field)}" value="${attr(member[field]||'')}"></div>`).join('');
+    return `<div class="family-card"><b>${esc(label)}</b><div class="form-grid">${fields}</div></div>`;
+  }).join('');
+  applyProfilePermissions();
+}
+
+function collectFamilyInfo(){
+  const info={};
+  for(const [role] of FAMILY_ROLES) info[role]={};
+  for(const input of document.querySelectorAll('[data-family-role]')){
+    info[input.dataset.familyRole][input.dataset.familyField]=input.value.trim();
+  }
+  return info;
+}
+
+function normalizeAttendanceItem(item){
+  if(typeof item==='string') return {event_name:item,timestamp:''};
+  return {event_name:item?.event_name||item?.event||item?.name||'',timestamp:item?.timestamp||item?.time||item?.date||''};
+}
+
+function renderAttendance(){
+  selected.attendance_history=Array.isArray(selected.attendance_history)?selected.attendance_history.map(normalizeAttendanceItem):[];
+  const counts={};
+  for(const item of selected.attendance_history){
+    const name=item.event_name||'Unnamed Event';
+    counts[name]=(counts[name]||0)+1;
+  }
+  const summary=Object.entries(counts).map(([event,count])=>`${event}: ${count} time${count===1?'':'s'}`).join(' | ');
+  document.getElementById('attendanceSummary').textContent=summary||'No attendance recorded';
+  document.getElementById('attendanceList').innerHTML=selected.attendance_history.map((item,index)=>`<div class="history-item">
+    <div class="history-top"><b>${esc(item.event_name||'Unnamed Event')}</b><span class="muted">${esc(formatDateTime(item.timestamp))}</span></div>
+    <button class="danger" onclick="removeAttendance(${index})">Remove</button>
+  </div>`).join('')||'<div class="muted">No attendance history yet.</div>';
+  applyProfilePermissions();
+}
+
+function addAttendance(){
+  if(!selected||!canEditPersonal()) return;
+  const event=document.getElementById('attendanceEvent').value.trim();
+  const time=document.getElementById('attendanceTime').value;
+  if(!event) return showToast('Event name required');
+  selected.attendance_history=Array.isArray(selected.attendance_history)?selected.attendance_history:[];
+  selected.attendance_history.push({event_name:event,timestamp:time?new Date(time).toISOString():new Date().toISOString()});
+  document.getElementById('attendanceEvent').value='';
+  document.getElementById('attendanceTime').value='';
+  renderAttendance();
+}
+
+function removeAttendance(index){
+  if(!selected||!canEditPersonal()) return;
+  selected.attendance_history.splice(index,1);
+  renderAttendance();
+}
+
+function collectCustomFields(){
+  const fields={};
+  for(const row of document.querySelectorAll('[data-custom-index]')){
+    const key=row.querySelector('[data-custom-key]').value.trim();
+    const value=row.querySelector('[data-custom-value]').value.trim();
+    if(key) fields[key]=value;
+  }
+  return fields;
+}
+
+function collectProfilePayload(){
+  const payload={
+    Stage:document.getElementById('editStage').value,
+    Problem:document.getElementById('editProblem').value,
+    Remarks:document.getElementById('editRemarks').value,
+    call_notes:document.getElementById('callNotes').value
+  };
+  if(canEditPersonal()){
+    const personal={};
+    for(const input of document.querySelectorAll('[data-personal]')){
+      personal[input.dataset.personal]=input.value.trim();
+      payload[PERSONAL_TO_API[input.dataset.personal]]=input.value.trim();
+    }
+    payload.personal_info=personal;
+    payload.family_info=collectFamilyInfo();
+    payload.attendance_history=selected.attendance_history||[];
+    payload.custom_fields=collectCustomFields();
+    if(currentUser?.role==='admin') payload.profile_classification=document.getElementById('profileClassification').value;
+  }
+  return payload;
+}
+
+function closeProfile(){
+  document.getElementById('profileModal').style.display='none';
+  selected=null;
+}
+
+async function assignSelected(){
+  if(!selected) return;
+  try{
+    const data=await apiFetch('/api/tasks/assign',{method:'POST',body:JSON.stringify({row_id:selected.id,assigned_to:document.getElementById('profileExecutive').value,admin_instruction:document.getElementById('assignInstruction').value})});
+    showToast(data.message||'Assigned');
+    closeProfile();
+    await Promise.all([loadRecords(false),loadOverview()]);
+  }catch(error){showToast(error.message||'Assign failed')}
+}
+
+async function saveProfile(){
+  if(!selected) return;
+  try{
+    const data=await apiFetch('/api/dataset-rows/'+encodeURIComponent(selected.id),{method:'PUT',body:JSON.stringify(collectProfilePayload())});
+    showToast(data.message||'Profile updated');
+    closeProfile();
+    await Promise.all([loadRecords(false),loadExecutives(),loadPermissions()]);
+    renderFilterOptions();
+    if(currentUser?.role==='admin') await Promise.all([loadOverview(),loadUsers()]);
+    else await loadExecutiveOverview();
+  }catch(error){showToast(error.message||'Update failed')}
+}
+
+async function uploadImage(input){
+  if(!selected||!input.files[0]) return;
+  const form=new FormData();
+  form.append('image',input.files[0]);
+  try{
+    const data=await apiFetch('/api/upload/profile-image/'+encodeURIComponent(selected.id),{method:'POST',body:form});
+    selected.image_url=data.image_url;
+    document.getElementById('pImg').src=data.image_url;
+    showToast('Image uploaded');
+    await loadRecords(false);
+    await loadHistory(selected.id);
+  }catch(error){showToast(error.message||'Upload failed')}
+  finally{input.value=''}
+}
+
+async function loadHistory(rowId){
+  try{
+    const data=await apiFetch('/api/dataset-rows/'+encodeURIComponent(rowId)+'/history');
+    renderHistory(data.history||[]);
+  }catch(error){
+    document.getElementById('historyList').innerHTML=`<div class="empty">${esc(error.message||'History failed')}</div>`;
+  }
+}
+
+function formatChangeValue(value){
+  if(value===undefined||value===null||value==='') return '-';
+  if(typeof value==='object') return esc(JSON.stringify(value));
+  return esc(value);
+}
+
+function renderHistory(history){
+  document.getElementById('historyList').innerHTML=history.map(item=>{
+    const changes=Object.entries(item.changes||{}).map(([field,change])=>`${esc(field)}: ${formatChangeValue(change.from)} -> ${formatChangeValue(change.to)}`).join('<br>')||'No field delta';
+    const remove=currentUser?.role==='admin'?`<button class="danger" onclick="removeHistory('${attr(item.id)}')">Remove</button>`:'';
+    return `<div class="history-item"><div class="history-top"><b>${esc(String(item.event_type||'event').replace('_',' '))}</b><span class="muted">${esc(formatDateTime(item.created_at))}</span></div><div class="history-changes">${changes}</div><div class="muted">${esc(item.actor_name)} (${esc(roleName(item.actor_role))})${item.notes?' - '+esc(item.notes):''}</div>${remove}</div>`;
+  }).join('')||'<div class="empty">No history yet</div>';
+}
+
+async function removeHistory(eventId){
+  if(!selected) return;
+  try{
+    await apiFetch('/api/dataset-rows/'+encodeURIComponent(selected.id)+'/history/'+encodeURIComponent(eventId),{method:'DELETE'});
+    showToast('History entry removed');
+    await loadHistory(selected.id);
+  }catch(error){showToast(error.message||'Remove failed')}
+}
+
+async function clearHistory(){
+  if(!selected) return;
+  try{
+    await apiFetch('/api/dataset-rows/'+encodeURIComponent(selected.id)+'/history',{method:'DELETE'});
+    showToast('History cleared');
+    await loadHistory(selected.id);
+    await loadOverview();
+  }catch(error){showToast(error.message||'Clear failed')}
+}
+
+async function loadUsers(){
+  if(currentUser?.role!=='admin') return;
+  try{
+    const data=await apiFetch('/api/users');
+    document.getElementById('usersBody').innerHTML=data.users.map(user=>`<tr>
+      <td><input value="${attr(user.name)}" onchange="updateUser('${attr(user.id)}',{name:this.value})"><div class="muted">${user.profile_row_id?'Promoted profile row '+esc(user.profile_row_id):'Manual software account'}</div></td>
+      <td><input type="email" value="${attr(user.email)}" onchange="updateUser('${attr(user.id)}',{email:this.value})"></td>
+      <td><select onchange="updateUser('${attr(user.id)}',{role:this.value})"><option value="admin" ${user.role==='admin'?'selected':''}>Admin</option><option value="executor" ${user.role==='executor'?'selected':''}>Executive</option></select></td>
+      <td><label><input type="checkbox" ${user.active?'checked':''} onchange="updateUser('${attr(user.id)}',{active:this.checked})"> Active</label></td>
+      <td><input type="password" placeholder="New password" onchange="if(this.value){updateUser('${attr(user.id)}',{password:this.value});this.value='';}"></td>
+    </tr>`).join('');
+  }catch(error){
+    document.getElementById('usersBody').innerHTML=`<tr><td colspan="5"><div class="empty">${esc(error.message)}</div></td></tr>`;
+  }
+}
+
+async function updateUser(id,patch){
+  try{
+    await apiFetch('/api/users/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify(patch)});
+    showToast('Account updated');
+    await Promise.all([loadUsers(),loadExecutives(),loadOverview()]);
+    renderFilterOptions();
+  }catch(error){showToast(error.message||'Update failed');loadUsers()}
+}
+
+async function createUser(){
+  try{
+    await apiFetch('/api/users',{method:'POST',body:JSON.stringify({name:document.getElementById('newName').value,email:document.getElementById('newEmail').value,password:document.getElementById('newPassword').value,role:document.getElementById('newRole').value})});
+    for(const id of ['newName','newEmail','newPassword']) document.getElementById(id).value='';
+    showToast('Account created');
+    await Promise.all([loadUsers(),loadExecutives(),loadOverview()]);
+    renderFilterOptions();
+  }catch(error){showToast(error.message||'Create failed')}
+}
+
+async function savePermissionSettings(){
+  try{
+    const data=await apiFetch('/api/settings/permissions',{method:'PUT',body:JSON.stringify({executive_can_edit_personal_data:document.getElementById('permExecutiveEdit').checked})});
+    permissions=data.settings||permissions;
+    showToast('Permission saved');
+  }catch(error){showToast(error.message||'Permission save failed')}
+}
+
+async function loadAiSettings(){
+  if(currentUser?.role!=='admin') return;
+  try{
+    const data=await apiFetch('/api/ai/settings');
+    document.getElementById('aiActiveProvider').value=data.settings.activeProvider||'local';
+    renderProviderStatus(data.settings);
+  }catch(error){
+    document.getElementById('providerStatus').innerHTML=`<div class="empty">${esc(error.message)}</div>`;
+  }
+}
+
+function renderProviderStatus(settings){
+  document.getElementById('providerStatus').innerHTML=Object.entries(settings.providers||{}).map(([provider,cfg])=>`<div class="history-item"><div class="history-top"><b>${esc(provider)}</b><span class="pill ${cfg.configured?'updated':''}">${cfg.configured?'Configured':'No Key'}</span></div><div class="muted">${esc(cfg.model||'')}</div></div>`).join('');
+}
+
+async function saveAiSettings(){
+  try{
+    const data=await apiFetch('/api/ai/settings',{method:'PUT',body:JSON.stringify({activeProvider:document.getElementById('aiActiveProvider').value,provider:document.getElementById('aiProvider').value,model:document.getElementById('aiModel').value,apiKey:document.getElementById('aiApiKey').value})});
+    document.getElementById('aiApiKey').value='';
+    renderProviderStatus(data.settings);
+    showToast('AI settings saved');
+  }catch(error){showToast(error.message||'AI settings failed')}
+}
+
+function toggleAiChat(){
+  const drawer=document.getElementById('aiDrawer');
+  drawer.style.display=drawer.style.display==='block'?'none':'block';
+}
+
+function clearFiltersWithoutLoading(){
+  document.getElementById('recordSearch').value='';
+  for(const id of ['locationFilter','minAgeFilter','maxAgeFilter']) document.getElementById(id).value='';
+  for(const id of ['stageFilter','statusFilter','assignedFilter']){const el=document.getElementById(id);if(el)el.value=''}
+}
+
+function applyAiFilters(filters){
+  clearFiltersWithoutLoading();
+  if(filters.search) document.getElementById('recordSearch').value=filters.search;
+  if(filters.mobile) document.getElementById('recordSearch').value=filters.mobile;
+  if(filters.stage) document.getElementById('stageFilter').value=filters.stage;
+  if(filters.task_status) document.getElementById('statusFilter').value=filters.task_status;
+  if(filters.assigned_to) document.getElementById('assignedFilter').value=filters.assigned_to;
+  if(filters.location) document.getElementById('locationFilter').value=filters.location;
+  if(filters.min_age) document.getElementById('minAgeFilter').value=filters.min_age;
+  if(filters.max_age) document.getElementById('maxAgeFilter').value=filters.max_age;
+}
+
+async function askAi(){
+  const question=document.getElementById('aiQuestion').value.trim();
+  if(!question) return;
+  document.getElementById('aiResult').textContent='Inspecting schema and running safe PostgreSQL query...';
+  try{
+    const data=await apiFetch('/api/ai/query',{method:'POST',body:JSON.stringify({question,pageSize:Number(document.getElementById('pageSize').value||50)})});
+    applyAiFilters(data.filters||{});
+    rows=data.rows||[];
+    pagination=data.pagination||pagination;
+    switchView('records');
+    renderRows();
+    renderPagination();
+    const filters=Object.entries(data.filters||{}).map(([k,v])=>`${k}: ${v}`).join(', ')||'none';
+    document.getElementById('aiResult').textContent=`${data.source}: ${data.explanation}. Filters: ${filters}. Matches: ${pagination.total}`;
+  }catch(error){
+    document.getElementById('aiResult').textContent=error.message||'AI query failed';
+  }
+}
+
+function formatDateTime(value){
+  if(!value) return '-';
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+document.addEventListener('DOMContentLoaded',boot);
+</script>
+</body>
+</html>
