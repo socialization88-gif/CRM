@@ -28,6 +28,7 @@ function cloudinaryOptimized(url) {
 }
 
 async function initDatabase() {
+  await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.app_users (
       id TEXT PRIMARY KEY,
@@ -45,7 +46,10 @@ async function initDatabase() {
 
   await pool.query("ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS profile_row_id TEXT UNIQUE");
   await pool.query("ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb");
-  await pool.query("DELETE FROM public.app_users WHERE role = 'user'");
+
+  await pool.query("UPDATE public.app_users SET role = 'executor' WHERE role = 'executive'");
+  await pool.query("DELETE FROM public.app_users WHERE role NOT IN ('admin', 'executor')");
+
   await pool.query('ALTER TABLE public.app_users DROP CONSTRAINT IF EXISTS app_users_role_check');
   await pool.query("ALTER TABLE public.app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('admin', 'executor'))");
 
@@ -72,6 +76,18 @@ async function initDatabase() {
       notes TEXT NOT NULL DEFAULT '',
       deleted_at TIMESTAMP WITHOUT TIME ZONE,
       deleted_by TEXT REFERENCES public.app_users(id) ON DELETE SET NULL,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.ai_chat_messages (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES public.app_users(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content_html TEXT NOT NULL DEFAULT '',
+      meta JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -104,8 +120,19 @@ async function initDatabase() {
   `);
 
   await pool.query(`
+    CREATE INDEX IF NOT EXISTS ai_chat_messages_session_idx
+    ON public.ai_chat_messages (user_id, session_id, created_at DESC, id DESC)
+  `);
+
+  await pool.query(`
     INSERT INTO public.app_settings (key, value)
-    VALUES ('permission_settings', '{"executive_can_edit_personal_data": true}'::jsonb)
+    VALUES ('permission_settings', '{"admin_create_accounts": true, "admin_assign_profiles": true, "admin_configure_ai": true, "admin_manage_permissions": true, "admin_view_dashboard": true, "admin_rw_all_profiles": true, "admin_use_ai_chat": true, "admin_clear_history": true, "exec_view_assigned_profiles": true, "exec_view_client_details": true, "exec_update_stage_remarks": true, "executive_can_edit_personal_data": true, "exec_manage_attendance": true}'::jsonb)
+    ON CONFLICT (key) DO NOTHING;
+  `);
+
+  await pool.query(`
+    INSERT INTO public.app_settings (key, value)
+    VALUES ('ai_settings', '{"activeProvider":"openai","providers":{}}'::jsonb)
     ON CONFLICT (key) DO NOTHING
   `);
 }

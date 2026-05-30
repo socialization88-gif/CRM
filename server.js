@@ -123,13 +123,20 @@ const ROLE_VALUES = new Set(['admin', 'executor']);
 const AI_PROVIDERS = new Set(['local', 'openai', 'gemini', 'anthropic']);
 const AI_VENDOR_MODELS = {
   local: ['local-parser'],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
-  gemini: ['gemini-1.5-pro', 'gemini-1.5-flash'],
-  anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'],
+  gemini: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+  anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
 };
 const COMPLETED_STAGES = new Set(['completed', 'complete', 'handled', 'done', 'closed']);
 const CALL_STAGE_OPTIONS = ['Interested', 'Active', 'Inactive', 'Pending', 'Completed', 'Handled', 'Dropped', 'Counselling', 'Follow Up'];
 const PROFILE_CLASS_OPTIONS = new Set(['Admin', 'Executive', 'User']);
+let langChainAgentState = {
+  initialized: false,
+  provider: '',
+  model: '',
+  initialized_at: null,
+  error: '',
+};
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
@@ -181,6 +188,67 @@ function verifyPassword(password, encoded) {
   if (kind !== 'pbkdf2' || !iterations || !salt || !expected) return false;
   const actual = crypto.pbkdf2Sync(String(password), salt, Number(iterations), 32, 'sha256').toString('hex');
   return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (m) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  }[m]));
+}
+
+function normalizeSoftwareRole(value, fallback = 'executor') {
+  const role = String(value || fallback).trim().toLowerCase();
+  if (role === 'executive') return 'executor';
+  if (role === 'admin') return 'admin';
+  if (role === 'executor') return 'executor';
+  return role;
+}
+
+function normalizeChatSessionId(value) {
+  return String(value || '').trim().slice(0, 120);
+}
+
+function normalizeChatRole(role) {
+  return role === 'assistant' ? 'assistant' : 'user';
+}
+
+async function rotateChatHistory(client, userId, sessionId) {
+  await client.query(`
+    WITH ranked AS (
+      SELECT id,
+             ROW_NUMBER() OVER (PARTITION BY user_id, session_id ORDER BY created_at DESC, id DESC) AS rn
+      FROM public.ai_chat_messages
+      WHERE user_id = $1 AND session_id = $2
+    )
+    DELETE FROM public.ai_chat_messages m
+    USING ranked r
+    WHERE m.id = r.id
+      AND r.rn > 30
+  `, [userId, sessionId]);
+}
+
+async function saveChatMessage(client, userId, sessionId, role, contentHtml, meta = {}) {
+  const result = await client.query(`
+    INSERT INTO public.ai_chat_messages (user_id, session_id, role, content_html, meta)
+    VALUES ($1, $2, $3, $4, $5::jsonb)
+    RETURNING id, user_id, session_id, role, content_html, meta, created_at
+  `, [userId, sessionId, normalizeChatRole(role), String(contentHtml || ''), JSON.stringify(meta || {})]);
+  await rotateChatHistory(client, userId, sessionId);
+  return result.rows[0];
+}
+
+async function loadChatHistory(userId, sessionId) {
+  const result = await pool.query(`
+    SELECT id::text, user_id, session_id, role, content_html, meta, created_at
+    FROM public.ai_chat_messages
+    WHERE user_id = $1 AND session_id = $2
+    ORDER BY created_at ASC, id ASC
+  `, [userId, sessionId]);
+  return result.rows;
 }
 
 function safeUser(row) {
@@ -286,6 +354,19 @@ function parseJsonField(value, fallback) {
   }
 }
 
+function normalizeAttendanceList(value) {
+  const list = parseJsonField(value, []);
+  if (!Array.isArray(list)) return [];
+  return list.map((item) => {
+    if (typeof item === 'string') return { event_name: item, timestamp: '' };
+    return {
+      event_name: item?.event_name || item?.event || item?.name || '',
+      timestamp: item?.timestamp || item?.time || item?.date || '',
+      notes: item?.notes || '',
+    };
+  });
+}
+
 function normalizeClassification(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'admin') return 'Admin';
@@ -328,7 +409,7 @@ function normalizeRow(row) {
     permanent_address: row.permanent_address || raw['Permanent Address'] || raw.permanent_address || '',
     profile_classification: classification,
     family_info: parseJsonField(row.family_info ?? raw.family_info, {}),
-    attendance_history: parseJsonField(row.attendance_history ?? raw.attendance_history, []),
+    attendance_history: normalizeAttendanceList(row.attendance_history ?? raw.attendance_history),
     custom_fields: parseJsonField(row.custom_fields ?? raw.custom_fields, {}),
     app_user_id: row.app_user_id || raw.app_user_id || '',
     executive_read_at: row.executive_read_at || raw.executive_read_at || '',
@@ -494,26 +575,59 @@ function filtersFromQuery(query) {
   };
 }
 
-function buildDatasetWhere(user, filters = {}) {
+function buildDatasetWhere(user, filters = {}, options = {}) {
   const values = [DATASET_ID];
   const where = ['r.dataset_id = $1'];
-
-  if (user.role === 'executor') {
-    values.push(user.id);
-    where.push(`r.data->>'assigned_to' = $${values.length}`);
-  }
+  const searchMode = options.searchMode || 'broad';
 
   if (filters.search) {
-    values.push(filters.search);
-    const p = `$${values.length}`;
-    where.push(`(
-      r.data->>'Name' ILIKE '%' || ${p} || '%' OR
-      r.data->>'Mobile' ILIKE '%' || ${p} || '%' OR
-      r.data->>'Location' ILIKE '%' || ${p} || '%' OR
-      r.data->>'Problem' ILIKE '%' || ${p} || '%' OR
-      r.data->>'Executive' ILIKE '%' || ${p} || '%' OR
-      r.data->>'Remarks' ILIKE '%' || ${p} || '%'
-    )`);
+    const searchTerms = buildSearchTerms(filters.search);
+    if (searchTerms.length) {
+      const clauses = [];
+      for (const term of searchTerms) {
+        values.push(term);
+        const p = `$${values.length}`;
+        const searchFields = searchMode === 'entity'
+          ? [
+            { expr: `COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Email', r.data->>'email', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'Mobile', r.data->>'mobile', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'Executive', r.data->>'executive', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'assigned_to_name', '')`, fuzzy: true },
+          ]
+          : [
+            { expr: `COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Email', r.data->>'email', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'Mobile', r.data->>'mobile', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'Location', r.data->>'location', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Problem', r.data->>'problem', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Executive', r.data->>'executive', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Remarks', r.data->>'remarks', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Father''s Name', r.data->>'father_name', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Mother''s Name', r.data->>'mother_name', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Profession', r.data->>'profession', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Occupation', r.data->>'occupation', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Stage', r.data->>'stage', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Date', r.data->>'date', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'Advertisement', r.data->>'advertisement', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Present Address', r.data->>'present_address', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Permanent Address', r.data->>'permanent_address', '')`, fuzzy: true },
+            { expr: `COALESCE(r.data->>'Blood Group', r.data->>'blood_group', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'Marital Status', r.data->>'marital_status', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'task_status', '')`, fuzzy: false },
+            { expr: `COALESCE(r.data->>'assigned_to_name', '')`, fuzzy: true },
+          ];
+        clauses.push(`(
+          ${searchFields.map((field) => {
+          if (field.fuzzy) {
+            return `(${field.expr} ILIKE '%' || ${p} || '%') OR (similarity(${field.expr}, ${p}) > 0.4)`;
+          }
+          return `${field.expr} ILIKE '%' || ${p} || '%'`;
+        }).join(' OR ')}
+        )`);
+      }
+      where.push(`(${clauses.join(' OR ')})`);
+    }
   }
 
   if (filters.stage) {
@@ -568,19 +682,40 @@ function buildDatasetWhere(user, filters = {}) {
     where.push(`NULLIF(regexp_replace(COALESCE(r.data->>'Age', ''), '[^0-9]', '', 'g'), '')::int <= $${values.length}`);
   }
 
-  return { where: `WHERE ${where.join(' AND ')}`, values };
+  return { where: `WHERE ${where.join(' AND ')}`, values, searchMode };
 }
 
-async function queryDatasetRows(user, filters, page, pageSize) {
-  const { where, values } = buildDatasetWhere(user, filters);
+async function queryDatasetRows(user, filters, page, pageSize, options = {}) {
+  const { where, values, searchMode } = buildDatasetWhere(user, filters, options);
   const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM public.dataset_rows r ${where}`, values);
   const total = countResult.rows[0]?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const offset = (safePage - 1) * pageSize;
   const dataValues = [...values, pageSize, offset];
+  const orderClause = filters.search
+    ? `ORDER BY
+        CASE
+          WHEN LOWER(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')) = LOWER($2) THEN 0
+          WHEN LOWER(COALESCE(r.data->>'Email', r.data->>'email', '')) = LOWER($2) THEN 1
+          WHEN LOWER(COALESCE(r.data->>'Mobile', r.data->>'mobile', '')) = LOWER($2) THEN 2
+          WHEN LOWER(COALESCE(r.data->>'Executive', r.data->>'executive', '')) = LOWER($2) THEN 3
+          WHEN LOWER(COALESCE(r.data->>'assigned_to_name', '')) = LOWER($2) THEN 4
+          WHEN COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '') ILIKE '%' || $2 || '%' THEN 5
+          ELSE 6
+        END ASC,
+        GREATEST(
+          similarity(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', ''), $2),
+          similarity(COALESCE(r.data->>'Location', r.data->>'location', ''), $2),
+          similarity(COALESCE(r.data->>'Problem', r.data->>'problem', ''), $2),
+          similarity(COALESCE(r.data->>'Remarks', r.data->>'remarks', ''), $2),
+          similarity(COALESCE(r.data->>'Executive', r.data->>'executive', ''), $2)
+        ) DESC,
+        r.row_number ASC,
+        r.id ASC`
+    : 'ORDER BY r.row_number ASC, r.id ASC';
   const rowsResult = await pool.query(
-    `${rowSelectSql()} ${where} ORDER BY r.row_number ASC, r.id ASC LIMIT $${dataValues.length - 1} OFFSET $${dataValues.length}`,
+    `${rowSelectSql()} ${where} ${orderClause} LIMIT $${dataValues.length - 1} OFFSET $${dataValues.length}`,
     dataValues
   );
 
@@ -630,6 +765,12 @@ async function queryOverviewDashboard() {
             AND LOWER(COALESCE(NULLIF(data->>'task_status', ''), 'pending')) = 'pending'
         )::int AS total_pending_queue_records,
         COUNT(*) FILTER (
+          WHERE COALESCE(data->>'assigned_to', '') <> ''
+        )::int AS total_allocated_records,
+        COUNT(*) FILTER (
+          WHERE COALESCE(data->>'assigned_to', '') = ''
+        )::int AS remaining_unassigned_records,
+        COUNT(*) FILTER (
           WHERE LOWER(COALESCE(data->>'task_status', '')) IN ('completed', 'handled')
              OR LOWER(COALESCE(data->>'Stage', '')) IN ('completed', 'handled')
         )::int AS total_completed_tasks
@@ -678,7 +819,8 @@ async function queryOverviewDashboard() {
 }
 
 async function queryExecutiveDashboard(user) {
-  const result = await pool.query(`
+  const [statsResult, rowsResult] = await Promise.all([
+    pool.query(`
     SELECT
       COUNT(*) FILTER (
         WHERE COALESCE(data->>'assigned_to', '') = $2
@@ -697,16 +839,81 @@ async function queryExecutiveDashboard(user) {
             OR LOWER(COALESCE(data->>'Stage', '')) IN ('completed', 'handled')
           )
       )::int AS completed_tasks,
-      COUNT(*) FILTER (WHERE COALESCE(data->>'assigned_to', '') = $2)::int AS total_assigned
+      COUNT(*) FILTER (WHERE COALESCE(data->>'assigned_to', '') = $2)::int AS total_assigned,
+      COUNT(*) FILTER (WHERE COALESCE(data->>'assigned_to', '') = $2)::int AS total_data_count,
+      COUNT(*) FILTER (
+        WHERE COALESCE(data->>'assigned_to', '') = $2
+          AND LOWER(COALESCE(NULLIF(data->>'task_status', ''), 'pending')) = 'pending'
+      )::int AS total_pending_queue_records,
+      COUNT(*) FILTER (WHERE COALESCE(data->>'assigned_to', '') = $2)::int AS total_allocated_records,
+      0::int AS remaining_unassigned_records,
+      CASE
+        WHEN COUNT(*) FILTER (WHERE COALESCE(data->>'assigned_to', '') = $2) = 0 THEN 0
+        ELSE ROUND((
+          COUNT(*) FILTER (
+            WHERE COALESCE(data->>'assigned_to', '') = $2
+              AND (
+                LOWER(COALESCE(data->>'task_status', '')) IN ('completed', 'handled')
+                OR LOWER(COALESCE(data->>'Stage', '')) IN ('completed', 'handled')
+              )
+          )::numeric /
+          COUNT(*) FILTER (WHERE COALESCE(data->>'assigned_to', '') = $2)::numeric
+        ) * 100, 2)
+      END AS completion_percentage
     FROM public.dataset_rows
     WHERE dataset_id = $1
-  `, [DATASET_ID, user.id]);
+    `, [DATASET_ID, user.id]),
+    pool.query(`
+      SELECT
+        r.id::text AS id,
+        r.row_number,
+        COALESCE(r.data->>'image_url', '') AS image_url,
+        COALESCE(NULLIF(r.data->>'Full Name', ''), NULLIF(r.data->>'Name', ''), NULLIF(r.data->>'full_name', ''), '') AS name,
+        COALESCE(NULLIF(r.data->>'Email', ''), NULLIF(r.data->>'email', ''), '') AS email,
+        COALESCE(NULLIF(r.data->>'Mobile', ''), NULLIF(r.data->>'mobile', ''), '') AS mobile,
+        COALESCE(r.data->>'assigned_at', '') AS assigned_at,
+        COALESCE(r.data->>'executive_read_at', '') AS executive_read_at,
+        COALESCE(r.data->>'task_status', '') AS task_status,
+        COALESCE(r.data->>'Stage', '') AS stage
+      FROM public.dataset_rows r
+      WHERE r.dataset_id = $1
+        AND COALESCE(r.data->>'assigned_to', '') = $2
+        AND LOWER(COALESCE(r.data->>'task_status', 'Pending')) NOT IN ('completed', 'handled')
+      ORDER BY (COALESCE(r.data->>'executive_read_at', '') = '') DESC,
+               COALESCE(r.data->>'assigned_at', '') DESC,
+               r.row_number ASC,
+               r.id ASC
+      LIMIT 200
+    `, [DATASET_ID, user.id]),
+  ]);
 
-  return result.rows[0] || {
+  const stats = statsResult.rows[0] || {
     new_tasks: 0,
     previous_pending_tasks: 0,
     completed_tasks: 0,
     total_assigned: 0,
+    total_data_count: 0,
+    total_pending_queue_records: 0,
+    total_allocated_records: 0,
+    remaining_unassigned_records: 0,
+    completion_percentage: 0,
+  };
+
+  return {
+    ...stats,
+    assigned_rows: rowsResult.rows.map((row) => ({
+      id: row.id,
+      row_number: row.row_number,
+      image_url: cloudinaryOptimized(row.image_url),
+      name: row.name,
+      email: row.email,
+      mobile: row.mobile,
+      assigned_at: row.assigned_at,
+      executive_read_at: row.executive_read_at,
+      task_status: row.task_status,
+      stage: row.stage,
+      is_new: !row.executive_read_at,
+    })),
   };
 }
 
@@ -722,7 +929,10 @@ async function queryBulkQueueSummary() {
       )::int AS total_allocated_records,
       COUNT(*) FILTER (
         WHERE COALESCE(data->>'assigned_to', '') = ''
-      )::int AS remaining_unassigned_core_records
+      )::int AS remaining_unassigned_core_records,
+      COUNT(*) FILTER (
+        WHERE COALESCE(data->>'assigned_to', '') = ''
+      )::int AS remaining_unassigned_records
     FROM public.dataset_rows
     WHERE dataset_id = $1
   `, [DATASET_ID]);
@@ -730,6 +940,7 @@ async function queryBulkQueueSummary() {
     total_pending_queue_records: 0,
     total_allocated_records: 0,
     remaining_unassigned_core_records: 0,
+    remaining_unassigned_records: 0,
   };
 }
 
@@ -797,19 +1008,46 @@ async function datasetSchema() {
 
 async function getAiSettingsRaw() {
   const result = await pool.query("SELECT value FROM public.app_settings WHERE key = 'ai_settings'");
-  return result.rows[0]?.value || { activeProvider: 'local', providers: {} };
+  return result.rows[0]?.value || { activeProvider: 'openai', providers: {} };
 }
 
 async function getPermissionSettings() {
   const result = await pool.query("SELECT value FROM public.app_settings WHERE key = 'permission_settings'");
+  const val = result.rows[0]?.value || {};
   return {
-    executive_can_edit_personal_data: result.rows[0]?.value?.executive_can_edit_personal_data !== false,
+    admin_create_accounts: val.admin_create_accounts !== false,
+    admin_assign_profiles: val.admin_assign_profiles !== false,
+    admin_configure_ai: val.admin_configure_ai !== false,
+    admin_manage_permissions: true,
+    admin_view_dashboard: val.admin_view_dashboard !== false,
+    admin_rw_all_profiles: val.admin_rw_all_profiles !== false,
+    admin_use_ai_chat: val.admin_use_ai_chat !== false,
+    admin_clear_history: val.admin_clear_history !== false,
+    
+    exec_view_assigned_profiles: val.exec_view_assigned_profiles !== false,
+    exec_view_client_details: val.exec_view_client_details !== false,
+    exec_update_stage_remarks: val.exec_update_stage_remarks !== false,
+    executive_can_edit_personal_data: val.executive_can_edit_personal_data !== false,
+    exec_manage_attendance: val.exec_manage_attendance !== false
   };
 }
 
 async function savePermissionSettings(userId, settings) {
   const value = {
+    admin_create_accounts: Boolean(settings.admin_create_accounts),
+    admin_assign_profiles: Boolean(settings.admin_assign_profiles),
+    admin_configure_ai: Boolean(settings.admin_configure_ai),
+    admin_manage_permissions: true,
+    admin_view_dashboard: Boolean(settings.admin_view_dashboard),
+    admin_rw_all_profiles: Boolean(settings.admin_rw_all_profiles),
+    admin_use_ai_chat: Boolean(settings.admin_use_ai_chat),
+    admin_clear_history: Boolean(settings.admin_clear_history),
+    
+    exec_view_assigned_profiles: Boolean(settings.exec_view_assigned_profiles),
+    exec_view_client_details: Boolean(settings.exec_view_client_details),
+    exec_update_stage_remarks: Boolean(settings.exec_update_stage_remarks),
     executive_can_edit_personal_data: Boolean(settings.executive_can_edit_personal_data),
+    exec_manage_attendance: Boolean(settings.exec_manage_attendance)
   };
   await pool.query(`
     INSERT INTO public.app_settings (key, value, updated_by, updated_at)
@@ -823,6 +1061,9 @@ async function savePermissionSettings(userId, settings) {
 }
 
 function publicAiSettings(settings) {
+  const activeProvider = ['openai', 'gemini', 'anthropic'].includes(settings.activeProvider)
+    ? settings.activeProvider
+    : 'openai';
   const providers = {};
   for (const provider of ['openai', 'gemini', 'anthropic']) {
     const cfg = settings.providers?.[provider] || {};
@@ -834,14 +1075,14 @@ function publicAiSettings(settings) {
     };
   }
   return {
-    activeProvider: settings.activeProvider || 'local',
+    activeProvider,
     vendors: {
-      local: { label: 'Local SQL Agent', models: AI_VENDOR_MODELS.local },
       openai: { label: 'OpenAI', models: AI_VENDOR_MODELS.openai },
       gemini: { label: 'Google Gemini', models: AI_VENDOR_MODELS.gemini },
       anthropic: { label: 'Anthropic', models: AI_VENDOR_MODELS.anthropic },
     },
     providers,
+    agent: langChainAgentState,
   };
 }
 
@@ -849,9 +1090,17 @@ function defaultAiModel(provider) {
   return (AI_VENDOR_MODELS[provider] || AI_VENDOR_MODELS.local)[0];
 }
 
+function providerModelCandidates(configured) {
+  const provider = configured.provider;
+  const preferred = String(configured.model || '').trim();
+  const fallbacks = AI_VENDOR_MODELS[provider] || [];
+  const candidates = [preferred, ...fallbacks].filter(Boolean);
+  return [...new Set(candidates)];
+}
+
 async function upsertAiSettings(userId, body) {
   const provider = String(body.provider || body.vendor || '').trim();
-  const activeProvider = String(body.activeProvider || provider || 'local').trim();
+  const activeProvider = String(body.activeProvider || provider || 'openai').trim();
   if (!AI_PROVIDERS.has(activeProvider)) throw new Error('Invalid active AI provider');
   if (provider && !AI_PROVIDERS.has(provider)) throw new Error('Invalid AI provider');
   const requestedModel = String(body.model || '').trim();
@@ -894,12 +1143,14 @@ async function upsertAiSettings(userId, body) {
           updated_at = CURRENT_TIMESTAMP
   `, [JSON.stringify(next), userId]);
 
+  await initializeLangChainAgent(next);
   return publicAiSettings(next);
 }
 
 function pickConfiguredProvider(settings) {
-  const provider = settings.activeProvider || 'local';
-  if (provider === 'local') return null;
+  const provider = ['openai', 'gemini', 'anthropic'].includes(settings.activeProvider)
+    ? settings.activeProvider
+    : 'openai';
   const cfg = settings.providers?.[provider];
   if (!cfg?.secret?.encrypted) return null;
   return {
@@ -925,6 +1176,11 @@ function aiSystemPrompt(schema) {
   return [
     'You are the planner inside a LangChain PostgreSQL agent for a work management dashboard.',
     'Return only compact JSON. Do not include markdown.',
+    'Understand English, Bangla, and mixed Hinglish-style user messages.',
+    'Ignore filler words, typos, and conversational phrases; infer the user intent from the useful keywords.',
+    'If the request is broad or noisy, prefer a safe broad search filter instead of returning empty filters.',
+    'If the user asks about a specific person or profile, prioritize exact identity fields like name, full name, email, mobile, and assigned executive, and avoid broad problem/remarks fields unless the user explicitly asks for them.',
+    'For person lookups, prefer narrow filters that bring back the most relevant single profile or the closest matching profiles.',
     'Use only these filter keys: search, stage, task_status, assigned_to, location, executive, mobile, min_age, max_age.',
     'Do not create destructive SQL. Convert the natural language request into safe filter values for public.dataset_rows; the server SQL tool will execute the final parameterized SELECT.',
     `The table is ${schema.table}; data fields are stored in JSONB column "${schema.jsonb_column}".`,
@@ -936,69 +1192,164 @@ function aiSystemPrompt(schema) {
   ].join('\n');
 }
 
-async function callAiProvider(question, schema, configured) {
-  const prompt = aiSystemPrompt(schema);
+function messageContentToText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === 'string') return part;
+      return part?.text || part?.content || '';
+    }).join('\n');
+  }
+  return String(content || '');
+}
+
+async function createLangChainModel(configured) {
+  if (configured.provider === 'openai') {
+    const { ChatOpenAI } = await import('@langchain/openai');
+    return new ChatOpenAI({
+      apiKey: configured.apiKey,
+      model: configured.model,
+      temperature: 0,
+    });
+  }
+  if (configured.provider === 'gemini') {
+    const { ChatGoogleGenerativeAI } = await import('@langchain/google-genai');
+    return new ChatGoogleGenerativeAI({
+      apiKey: configured.apiKey,
+      model: configured.model,
+      temperature: 0,
+    });
+  }
+  if (configured.provider === 'anthropic') {
+    const { ChatAnthropic } = await import('@langchain/anthropic');
+    return new ChatAnthropic({
+      apiKey: configured.apiKey,
+      model: configured.model,
+      temperature: 0,
+    });
+  }
+  throw new Error('Unsupported LangChain provider');
+}
+
+async function callLangChainProvider(question, prompt, configured) {
+  const model = await createLangChainModel(configured);
+  const response = await model.invoke([
+    { role: 'system', content: prompt },
+    { role: 'user', content: question },
+  ]);
+  return extractJson(messageContentToText(response.content || response.text || response));
+}
+
+async function initializeLangChainAgent(settings = null) {
+  try {
+    const raw = settings || await getAiSettingsRaw();
+    const configured = pickConfiguredProvider(raw);
+    if (!configured) {
+      const activeProvider = ['openai', 'gemini', 'anthropic'].includes(raw.activeProvider) ? raw.activeProvider : 'openai';
+      langChainAgentState = {
+        initialized: false,
+        provider: activeProvider,
+        model: '',
+        initialized_at: null,
+        error: 'API key is not configured for the active vendor.',
+      };
+      return langChainAgentState;
+    }
+    await createLangChainModel(configured);
+    langChainAgentState = {
+      initialized: true,
+      provider: configured.provider,
+      model: configured.model,
+      initialized_at: new Date().toISOString(),
+      error: '',
+    };
+  } catch (error) {
+    const activeProvider = ['openai', 'gemini', 'anthropic'].includes(settings?.activeProvider) ? settings.activeProvider : 'openai';
+    langChainAgentState = {
+      initialized: false,
+      provider: activeProvider,
+      model: '',
+      initialized_at: null,
+      error: error.message,
+    };
+  }
+  return langChainAgentState;
+}
+
+async function callDirectProvider(question, prompt, configured) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 18000);
   try {
     if (configured.provider === 'openai') {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${configured.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: configured.model,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: prompt },
-            { role: 'user', content: question },
-          ],
-          temperature: 0,
-        }),
-        signal: controller.signal,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message || 'OpenAI request failed');
-      return extractJson(data.choices?.[0]?.message?.content || '{}');
+      let lastError = null;
+      for (const model of providerModelCandidates(configured)) {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${configured.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: prompt },
+              { role: 'user', content: question },
+            ],
+            temperature: 0,
+          }),
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (response.ok) return extractJson(data.choices?.[0]?.message?.content || '{}');
+        lastError = new Error(data.error?.message || 'OpenAI request failed');
+      }
+      throw lastError || new Error('OpenAI request failed');
     }
 
     if (configured.provider === 'gemini') {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(configured.model)}:generateContent?key=${encodeURIComponent(configured.apiKey)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nQuestion: ${question}` }] }],
-          generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-        }),
-        signal: controller.signal,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message || 'Gemini request failed');
-      return extractJson(data.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
+      let lastError = null;
+      for (const model of providerModelCandidates(configured)) {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(configured.apiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nQuestion: ${question}` }] }],
+            generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+          }),
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (response.ok) return extractJson(data.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
+        lastError = new Error(data.error?.message || 'Gemini request failed');
+      }
+      throw lastError || new Error('Gemini request failed');
     }
 
     if (configured.provider === 'anthropic') {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': configured.apiKey,
-          'anthropic-version': '2023-06-01',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: configured.model,
-          max_tokens: 800,
-          temperature: 0,
-          system: prompt,
-          messages: [{ role: 'user', content: question }],
-        }),
-        signal: controller.signal,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message || 'Anthropic request failed');
-      return extractJson(data.content?.map((part) => part.text || '').join('\n') || '{}');
+      let lastError = null;
+      for (const model of providerModelCandidates(configured)) {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': configured.apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 800,
+            temperature: 0,
+            system: prompt,
+            messages: [{ role: 'user', content: question }],
+          }),
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (response.ok) return extractJson(data.content?.map((part) => part.text || '').join('\n') || '{}');
+        lastError = new Error(data.error?.message || 'Anthropic request failed');
+      }
+      throw lastError || new Error('Anthropic request failed');
     }
   } finally {
     clearTimeout(timeout);
@@ -1006,8 +1357,261 @@ async function callAiProvider(question, schema, configured) {
   return null;
 }
 
+async function callAiProvider(question, schema, configured) {
+  const prompt = aiSystemPrompt(schema);
+  try {
+    const parsed = await callLangChainProvider(question, prompt, configured);
+    langChainAgentState = {
+      initialized: true,
+      provider: configured.provider,
+      model: configured.model,
+      initialized_at: langChainAgentState.initialized_at || new Date().toISOString(),
+      error: '',
+    };
+    return { ...parsed, _source: configured.provider };
+  } catch (error) {
+    const directParsed = await callDirectProvider(question, prompt, configured);
+    return {
+      ...directParsed,
+      _source: `${configured.provider}-direct-fallback`,
+      _provider_error: `LangChain unavailable or failed: ${error.message}`,
+    };
+  }
+}
+
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+const QUERY_BOILERPLATE_WORDS = new Set([
+  'show',
+  'me',
+  'give',
+  'tell',
+  'find',
+  'search',
+  'lookup',
+  'look',
+  'about',
+  'load',
+  'list',
+  'get',
+  'all',
+  'full',
+  'details',
+  'detail',
+  'info',
+  'information',
+  'profile',
+  'record',
+  'records',
+  'data',
+  'acha',
+  'achha',
+  'accha',
+  'bhalo',
+  'valo',
+  'kar',
+  'koro',
+  'kori',
+  'kore',
+  'koreo',
+  'ki',
+  'kisu',
+  'kono',
+  'aro',
+  'bolo',
+  'bujhao',
+  'somporke',
+  'daw',
+  'dao',
+  'please',
+  'kindly',
+  'amake',
+  'amar',
+  'jonno',
+  'the',
+  'a',
+  'an',
+  'of',
+  'to',
+  'for',
+  'with',
+  'and',
+  'in',
+  'from',
+  'on',
+  'at',
+  'er',
+  'r',
+  'er.',
+  'r.',
+  // Expanded English conversational/filler terms
+  'what',
+  'do',
+  'you',
+  'know',
+  'who',
+  'is',
+  'he',
+  'she',
+  'can',
+  'could',
+  'would',
+  'should',
+  'want',
+  'need',
+  'like',
+  'how',
+  'where',
+  'why',
+  'which',
+  'tall',
+  'says',
+  'say',
+  'said',
+  'has',
+  'have',
+  'had',
+  'any',
+  'some',
+  'someone',
+  'person',
+  'people',
+  'user',
+  'users',
+  // Expanded Bengali conversational/filler terms
+  'amader',
+  'apnar',
+  'apnader',
+  'tar',
+  'tader',
+  'kicchu',
+  'ache',
+  'ase',
+  'asen',
+  'asen.',
+  'ache.',
+  'na',
+  'niye',
+  'niya',
+  'bapere',
+  'bapare',
+  'bishaie',
+  'bishoye',
+  'sombondhe',
+  'bolte',
+  'parben',
+  'parben?',
+  'janen',
+  'janen?',
+  'jano',
+  'jano?',
+  'bujhiye',
+  'khuje',
+  'khoje',
+  'khujun',
+  'khojun',
+  'khujo',
+  'dekhaw',
+  'dekhao',
+  'dekhaben',
+  'dekhaben?',
+  'dekhon',
+  'dekhun',
+]);
+
+function extractSearchText(question) {
+  const tokens = String(question || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9@._+\-\s]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim().replace(/^[^a-z0-9@]+|[^a-z0-9@]+$/gi, ''))
+    .filter(Boolean)
+    .filter((token) => token.length > 2 && !QUERY_BOILERPLATE_WORDS.has(token));
+  return [...new Set(tokens)].join(' ').trim();
+}
+
+function buildSearchTerms(value) {
+  const cleaned = extractSearchText(value);
+  if (!cleaned) return [];
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  const terms = [cleaned];
+  if (tokens.length > 1) terms.push(tokens.join(' '));
+  terms.push(...tokens);
+  return [...new Set(terms)].slice(0, 8);
+}
+
+function inferSearchMode(question, filters = {}) {
+  const q = normalizeText(question);
+  const search = extractSearchText(filters.search || question);
+  const tokenCount = search ? search.split(/\s+/).filter(Boolean).length : 0;
+  const entityHint = /(about|somporke|সম্পর্কে|details?|full details|tell me|show me|who is|what is|er data|er details|er full details|profile of|information about)/i.test(q);
+  if (entityHint) return 'entity';
+  if (tokenCount > 0 && tokenCount <= 2) return 'entity';
+  return 'broad';
+}
+
+function isLikelyExactMatch(search, row) {
+  const target = normalizeText(search);
+  if (!target) return false;
+  const fields = [
+    row.full_name,
+    row.name,
+    row.email,
+    row.mobile,
+    row.executive,
+    row.assigned_to_name,
+  ].map(normalizeText).filter(Boolean);
+  return fields.some((value) => value === target);
+}
+
+function rowSummary(row) {
+  const name = row.full_name || row.name || '-';
+  const mobile = row.mobile || '-';
+  const location = row.location || row.present_address || '-';
+  const problem = row.problem || '-';
+  const stage = row.stage || '-';
+  return { name, mobile, location, problem, stage };
+}
+
+function buildAiMatchReply(plan, resultRows, total) {
+  if (!total) return buildAiNoResultReply(plan);
+  const focus = plan.search_mode === 'entity' && plan.filters.search ? ` for "${plan.filters.search}"` : '';
+  const exact = (resultRows || []).find((row) => isLikelyExactMatch(plan.filters.search, row));
+  const top = exact || resultRows?.[0];
+  const summary = top ? rowSummary(top) : null;
+  if (plan.search_mode === 'entity' && summary) {
+    return `I found ${total} matching profile${total === 1 ? '' : 's'}${focus}. Top match: ${summary.name}. Mobile: ${summary.mobile}. Location: ${summary.location}. Problem: ${summary.problem}. Stage: ${summary.stage}.`;
+  }
+  if (summary) {
+    return `I found ${total} matching profile${total === 1 ? '' : 's'}${focus}. Best match: ${summary.name}. Mobile: ${summary.mobile}. Location: ${summary.location}. Problem: ${summary.problem}.`;
+  }
+  return `I found ${total} matching profile${total === 1 ? '' : 's'}${focus}.`;
+}
+
+function describeFilterSet(filters = {}) {
+  const pieces = [];
+  if (filters.search) pieces.push(`search "${filters.search}"`);
+  if (filters.mobile) pieces.push(`mobile "${filters.mobile}"`);
+  if (filters.stage) pieces.push(`stage "${filters.stage}"`);
+  if (filters.task_status) pieces.push(`task status "${filters.task_status}"`);
+  if (filters.assigned_to) pieces.push(`assigned profile "${filters.assigned_to}"`);
+  if (filters.location) pieces.push(`location "${filters.location}"`);
+  if (filters.executive) pieces.push(`executive "${filters.executive}"`);
+  if (filters.min_age) pieces.push(`min age ${filters.min_age}`);
+  if (filters.max_age) pieces.push(`max age ${filters.max_age}`);
+  return pieces.join(', ');
+}
+
+function buildAiNoResultReply(plan) {
+  const filterSummary = describeFilterSet(plan.filters);
+  const searchHint = plan.filters.search
+    ? `I searched for "${plan.filters.search}" across name, full name, mobile, email, location, problem, executive, remarks, and related fields.`
+    : 'I could not extract a clear name, phone number, or other searchable field from the message, so the match was too broad.';
+  const explanationHint = plan.explanation ? ` Reason: ${plan.explanation}` : '';
+  const filterHint = filterSummary ? ` Filters used: ${filterSummary}.` : '';
+  return `No related data found in the database matching your criteria.${filterHint} ${searchHint}${explanationHint}`.trim();
 }
 
 function findKnownValue(question, knownRows) {
@@ -1061,11 +1665,9 @@ function localQuestionToFilters(question, schema) {
     filters.max_age = exactAge[1];
   }
 
-  if (!Object.keys(filters).length) {
-    filters.search = question
-      .replace(/\b(show|me|users?|who|are|is|from|in|with|and|the|all|list|find|search)\b/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+  const fallbackSearch = extractSearchText(question);
+  if (fallbackSearch) {
+    filters.search = fallbackSearch;
   }
 
   return { filters, explanation: 'Local schema parser matched known fields and common filter phrases.' };
@@ -1077,7 +1679,8 @@ function cleanAiFilters(rawFilters, schema) {
   const allowedStrings = ['search', 'stage', 'task_status', 'assigned_to', 'location', 'executive', 'mobile'];
   for (const key of allowedStrings) {
     if (raw[key] !== undefined && raw[key] !== null && String(raw[key]).trim()) {
-      filters[key] = String(raw[key]).trim();
+      const value = String(raw[key]).trim();
+      filters[key] = key === 'search' ? extractSearchText(value) : value;
     }
   }
   for (const key of ['min_age', 'max_age']) {
@@ -1107,7 +1710,8 @@ async function translateQuestion(question) {
   if (configured) {
     try {
       parsed = await callAiProvider(question, schema, configured);
-      source = configured.provider;
+      source = parsed._source || configured.provider;
+      if (parsed._provider_error) provider_error = parsed._provider_error;
     } catch (error) {
       provider_error = error.message;
     }
@@ -1122,6 +1726,7 @@ async function translateQuestion(question) {
     source,
     provider_error,
     filters: cleanAiFilters(parsed.filters, schema),
+    search_mode: inferSearchMode(question, parsed?.filters || {}),
     explanation: parsed.explanation || 'Filter plan generated from the dataset schema.',
     schema,
   };
@@ -1205,7 +1810,7 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
-    const requestedRole = String(req.body.role || '').trim();
+    const requestedRole = req.body.role ? normalizeSoftwareRole(req.body.role, '') : '';
     if (!email || !password) return res.status(400).json({ ok: false, message: 'Email and password required' });
     if (requestedRole && !ROLE_VALUES.has(requestedRole)) return res.status(400).json({ ok: false, message: 'Invalid software role' });
 
@@ -1231,6 +1836,8 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
 });
 
 app.get('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied: Create & manage accounts' });
   const users = await pool.query(`
     SELECT id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
     FROM public.app_users
@@ -1241,11 +1848,13 @@ app.get('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
 });
 
 app.post('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const name = String(req.body.name || '').trim();
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '').trim();
-    const role = String(req.body.role || 'executor').trim();
+    const role = normalizeSoftwareRole(req.body.role, 'executor');
     if (!name || !email || !password) return res.status(400).json({ ok: false, message: 'Name, email and password required' });
     if (!ROLE_VALUES.has(role)) return res.status(400).json({ ok: false, message: 'Invalid role' });
 
@@ -1263,11 +1872,14 @@ app.post('/api/users', requireAuth, requireRole(['admin']), async (req, res) => 
 });
 
 app.put('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const patch = {};
     for (const key of ['name', 'email', 'role', 'active']) {
       if (Object.prototype.hasOwnProperty.call(req.body, key)) patch[key] = req.body[key];
     }
+    if (patch.role !== undefined) patch.role = normalizeSoftwareRole(patch.role, 'executor');
     if (patch.role && !ROLE_VALUES.has(String(patch.role))) return res.status(400).json({ ok: false, message: 'Invalid role' });
 
     const sets = [];
@@ -1311,6 +1923,47 @@ app.put('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) 
   }
 });
 
+app.delete('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  const client = await pool.connect();
+  try {
+    const userId = String(req.params.id || '').trim();
+    if (!userId) return res.status(400).json({ ok: false, message: 'User id required' });
+    if (userId === req.user.id) return res.status(400).json({ ok: false, message: 'You cannot delete your own account' });
+
+    await client.query('BEGIN');
+    const target = await client.query(`
+      SELECT id, name, email, role, active, profile_row_id, metadata
+      FROM public.app_users
+      WHERE id = $1 AND role = 'executor'
+      FOR UPDATE
+    `, [userId]);
+    if (!target.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'Executive account not found' });
+    }
+
+    const deleted = await client.query(`
+      DELETE FROM public.app_users
+      WHERE id = $1 AND role = 'executor'
+      RETURNING id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
+    `, [userId]);
+    if (!deleted.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'Executive account not found' });
+    }
+
+    await client.query('COMMIT');
+    res.json({ ok: true, message: 'Executive account deleted', user: safeUser(deleted.rows[0]) });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => { });
+    res.status(500).json({ ok: false, message: 'Delete failed', error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/executives', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
   const result = await pool.query(`
     SELECT id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
@@ -1327,6 +1980,8 @@ app.get('/api/dataset-meta', requireAuth, requireRole(['admin', 'executor']), as
 });
 
 app.get('/api/dataset-rows', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (req.user.role === 'executor' && !perms.exec_view_assigned_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const page = toInt(req.query.page, 1, 1, Number.MAX_SAFE_INTEGER);
     const pageSize = toInt(req.query.pageSize || req.query.limit, 50, 1, MAX_PAGE_SIZE);
@@ -1340,6 +1995,8 @@ app.get('/api/dataset-rows', requireAuth, requireRole(['admin', 'executor']), as
 });
 
 app.get('/api/dataset-summary', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (req.user.role === 'executor' && !perms.exec_view_assigned_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const summary = await queryDatasetSummary(req.user, filtersFromQuery(req.query));
     res.json({ ok: true, summary });
@@ -1349,6 +2006,8 @@ app.get('/api/dataset-summary', requireAuth, requireRole(['admin', 'executor']),
 });
 
 app.get('/api/dashboard/overview', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_view_dashboard) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const overview = await queryOverviewDashboard();
     res.json({ ok: true, overview });
@@ -1358,6 +2017,8 @@ app.get('/api/dashboard/overview', requireAuth, requireRole(['admin']), async (r
 });
 
 app.get('/api/dashboard/executive', requireAuth, requireRole(['executor']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.exec_view_assigned_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const overview = await queryExecutiveDashboard(req.user);
     res.json({ ok: true, overview });
@@ -1367,6 +2028,8 @@ app.get('/api/dashboard/executive', requireAuth, requireRole(['executor']), asyn
 });
 
 app.get('/api/analytics/assignments', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_view_dashboard) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const [executives, unassigned, total] = await Promise.all([
       pool.query(`
@@ -1413,6 +2076,8 @@ app.get('/api/analytics/assignments', requireAuth, requireRole(['admin']), async
 });
 
 app.post('/api/tasks/assign', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_assign_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
   const client = await pool.connect();
   try {
     const ids = Array.isArray(req.body.row_ids) ? req.body.row_ids : [req.body.row_id];
@@ -1461,7 +2126,7 @@ app.post('/api/tasks/assign', requireAuth, requireRole(['admin']), async (req, r
     await client.query('COMMIT');
     res.json({ ok: true, message: `Assigned ${result.rowCount} profile(s) to ${manager.name}`, updated: result.rowCount });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     console.error('Assign error:', error);
     res.status(500).json({ ok: false, message: 'Task assign failed', error: error.message });
   } finally {
@@ -1479,6 +2144,8 @@ app.get('/api/tasks/bulk-queue-summary', requireAuth, requireRole(['admin']), as
 });
 
 app.post('/api/tasks/bulk-assign', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_assign_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
   const client = await pool.connect();
   try {
     const rawSegments = Array.isArray(req.body.segments) ? req.body.segments : [];
@@ -1582,7 +2249,7 @@ app.post('/api/tasks/bulk-assign', requireAuth, requireRole(['admin']), async (r
       summary,
     });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     console.error('Bulk assign error:', error);
     res.status(500).json({ ok: false, message: 'Bulk task assignment failed', error: error.message });
   } finally {
@@ -1591,6 +2258,9 @@ app.post('/api/tasks/bulk-assign', requireAuth, requireRole(['admin']), async (r
 });
 
 app.put('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (req.user.role === 'admin' && !perms.admin_rw_all_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  if (req.user.role === 'executor' && !perms.exec_update_stage_remarks) return res.status(403).json({ ok: false, message: 'Permission denied' });
   const client = await pool.connect();
   try {
     const permissions = await getPermissionSettings();
@@ -1605,7 +2275,7 @@ app.put('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor'])
 
     const allowed = req.user.role === 'admin'
       ? DATA_EDIT_FIELDS
-      : (permissions.executive_can_edit_personal_data ? [...EXECUTOR_EDIT_FIELDS, ...PERSONAL_DATA_FIELDS] : EXECUTOR_EDIT_FIELDS);
+      : (permissions.executive_can_edit_personal_data ? [...EXECUTOR_EDIT_FIELDS, ...PERSONAL_DATA_FIELDS] : []);
     const patch = {};
     for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call(req.body, key)) patch[key] = req.body[key] ?? '';
@@ -1669,10 +2339,6 @@ app.put('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor'])
     await client.query('BEGIN');
     const selectValues = [DATASET_ID, String(req.params.id)];
     let where = 'dataset_id = $1 AND id::text = $2';
-    if (req.user.role === 'executor') {
-      selectValues.push(req.user.id);
-      where += ` AND data->>'assigned_to' = $${selectValues.length}`;
-    }
 
     const before = await client.query(`
       SELECT id::text, row_number, data
@@ -1682,7 +2348,7 @@ app.put('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor'])
     `, selectValues);
     if (!before.rows.length) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ ok: false, message: 'Row not found or not assigned to you' });
+      return res.status(404).json({ ok: false, message: 'Row not found' });
     }
 
     const changes = buildChangeSet(before.rows[0].data, patch);
@@ -1718,15 +2384,105 @@ app.put('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor'])
 
     const notes = `${String(req.body.call_notes || req.body.notes || '')}${accountNote}`.trim();
     if (Object.keys(changes).length || notes) {
-      await insertRowEvent(client, updatedRow, req.body.call_notes ? 'call_update' : 'profile_update', req.user, changes, notes);
+      const hasCallChange = ['Stage', 'Problem', 'Remarks'].some((field) => Object.prototype.hasOwnProperty.call(changes, field));
+      await insertRowEvent(client, updatedRow, (req.body.call_notes || hasCallChange) ? 'call_update' : 'profile_update', req.user, changes, notes);
     }
 
     await client.query('COMMIT');
     res.json({ ok: true, message: 'Profile updated', row: normalizeRow({ ...updatedRow, raw_data: updatedRow.data }) });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     console.error('Update error:', error);
     res.status(500).json({ ok: false, message: 'Update failed', error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (req.user.role === 'executor' && !perms.exec_view_client_details) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  try {
+    const values = [DATASET_ID, String(req.params.id)];
+    let where = 'dataset_id = $1 AND id::text = $2';
+    if (req.user.role === 'executor') {
+      values.push(req.user.id);
+      where += ` AND COALESCE(data->>'assigned_to', '') = $${values.length}`;
+    }
+    const result = await pool.query(`
+      SELECT id::text, row_number, data
+      FROM public.dataset_rows
+      WHERE ${where}
+      LIMIT 1
+    `, values);
+    if (!result.rows.length) return res.status(404).json({ ok: false, message: 'Row not found' });
+    res.json({ ok: true, row: normalizeRow({ ...result.rows[0], raw_data: result.rows[0].data }) });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: 'Row load failed', error: error.message });
+  }
+});
+
+app.delete('/api/dataset-rows/:id/attendance/:index', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (req.user.role === 'admin' && !perms.admin_rw_all_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  if (req.user.role === 'executor' && !perms.exec_manage_attendance) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  const client = await pool.connect();
+  try {
+    const permissions = await getPermissionSettings();
+    if (req.user.role === 'executor' && !permissions.executive_can_edit_personal_data) {
+      return res.status(403).json({ ok: false, message: 'Executive personal-data editing is currently revoked by Admin' });
+    }
+
+    const index = toInt(req.params.index, -1, -1, Number.MAX_SAFE_INTEGER);
+    if (index < 0) return res.status(400).json({ ok: false, message: 'Invalid attendance row index' });
+
+    await client.query('BEGIN');
+    const values = [DATASET_ID, String(req.params.id)];
+    let where = 'dataset_id = $1 AND id::text = $2';
+
+    const before = await client.query(`
+      SELECT id::text, row_number, data
+      FROM public.dataset_rows
+      WHERE ${where}
+      FOR UPDATE
+    `, values);
+    if (!before.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'Row not found' });
+    }
+
+    const attendance = normalizeAttendanceList(before.rows[0].data.attendance_history);
+    if (index >= attendance.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'Attendance row not found' });
+    }
+    const removed = attendance.splice(index, 1)[0];
+    const patch = { attendance_history: attendance };
+    const result = await client.query(`
+      UPDATE public.dataset_rows
+      SET data = data || $1::jsonb,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE dataset_id = $2 AND id::text = $3
+      RETURNING id::text, row_number, data
+    `, [JSON.stringify(patch), DATASET_ID, String(req.params.id)]);
+
+    await insertRowEvent(client, result.rows[0], 'profile_update', req.user, {
+      attendance_history: {
+        from: before.rows[0].data.attendance_history || [],
+        to: attendance,
+      },
+      removed_attendance: { from: removed, to: '' },
+    }, `Removed attendance row: ${removed.event_name || 'Unnamed Event'}`);
+
+    await client.query('COMMIT');
+    res.json({
+      ok: true,
+      message: 'Attendance row removed',
+      row: normalizeRow({ ...result.rows[0], raw_data: result.rows[0].data }),
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => { });
+    res.status(500).json({ ok: false, message: 'Attendance remove failed', error: error.message });
   } finally {
     client.release();
   }
@@ -1742,12 +2498,6 @@ app.post('/api/upload/profile-image/:id', requireAuth, requireRole(['admin', 'ex
       if (!permissions.executive_can_edit_personal_data) {
         return res.status(403).json({ ok: false, message: 'Executive personal-data editing is currently revoked by Admin' });
       }
-      const assigned = await pool.query(`
-        SELECT id
-        FROM public.dataset_rows
-        WHERE dataset_id = $1 AND id::text = $2 AND data->>'assigned_to' = $3
-      `, [DATASET_ID, String(req.params.id), req.user.id]);
-      if (!assigned.rows.length) return res.status(403).json({ ok: false, message: 'Row not assigned to you' });
     }
 
     const uploadResult = await cloudinary.uploader.upload(req.file.path, {
@@ -1774,7 +2524,7 @@ app.post('/api/upload/profile-image/:id', requireAuth, requireRole(['admin', 'ex
     console.error('Upload error:', error);
     res.status(500).json({ ok: false, message: 'Image upload failed', error: error.message });
   } finally {
-    if (req.file?.path) fs.unlink(req.file.path).catch(() => {});
+    if (req.file?.path) fs.unlink(req.file.path).catch(() => { });
   }
 });
 
@@ -1787,14 +2537,13 @@ app.post('/api/dataset-rows/:id/read', requireAuth, requireRole(['executor']), a
           updated_at = CURRENT_TIMESTAMP
       WHERE dataset_id = $2
         AND id::text = $3
-        AND data->>'assigned_to' = $4
         AND COALESCE(data->>'executive_read_at', '') = ''
       RETURNING id::text, row_number, data
-    `, [JSON.stringify({ executive_read_at: readAt }), DATASET_ID, String(req.params.id), req.user.id]);
+    `, [JSON.stringify({ executive_read_at: readAt }), DATASET_ID, String(req.params.id)]);
     if (result.rows[0]) {
       await insertRowEvent(pool, result.rows[0], 'profile_update', req.user, {
         executive_read_at: { from: '', to: readAt },
-      }, 'Executive opened the assigned profile');
+      }, 'Executive opened the profile');
     }
     res.json({ ok: true, read_at: readAt, updated: result.rowCount });
   } catch (error) {
@@ -1805,14 +2554,8 @@ app.post('/api/dataset-rows/:id/read', requireAuth, requireRole(['executor']), a
 app.get('/api/dataset-rows/:id/history', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
   try {
     const rowId = String(req.params.id);
-    const values = [DATASET_ID, rowId];
-    let accessWhere = 'dataset_id = $1 AND id::text = $2';
-    if (req.user.role === 'executor') {
-      values.push(req.user.id);
-      accessWhere += ` AND data->>'assigned_to' = $${values.length}`;
-    }
-    const access = await pool.query(`SELECT id::text, row_number FROM public.dataset_rows WHERE ${accessWhere}`, values);
-    if (!access.rows.length) return res.status(404).json({ ok: false, message: 'Row not found or not assigned to you' });
+    const access = await pool.query(`SELECT id::text, row_number FROM public.dataset_rows WHERE dataset_id = $1 AND id::text = $2`, [DATASET_ID, rowId]);
+    if (!access.rows.length) return res.status(404).json({ ok: false, message: 'Row not found' });
 
     const history = await pool.query(`
       SELECT
@@ -1835,6 +2578,8 @@ app.get('/api/dataset-rows/:id/history', requireAuth, requireRole(['admin', 'exe
 });
 
 app.delete('/api/dataset-rows/:id/history/:eventId', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_clear_history) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const result = await pool.query(`
       UPDATE public.dataset_row_events
@@ -1851,6 +2596,8 @@ app.delete('/api/dataset-rows/:id/history/:eventId', requireAuth, requireRole(['
 });
 
 app.delete('/api/dataset-rows/:id/history', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_clear_history) return res.status(403).json({ ok: false, message: 'Permission denied' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1876,7 +2623,7 @@ app.delete('/api/dataset-rows/:id/history', requireAuth, requireRole(['admin']),
     await client.query('COMMIT');
     res.json({ ok: true, message: 'History cleared', removed: removed.rowCount });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     res.status(500).json({ ok: false, message: 'History clear failed', error: error.message });
   } finally {
     client.release();
@@ -1902,11 +2649,15 @@ app.put('/api/settings/permissions', requireAuth, requireRole(['admin']), async 
 });
 
 app.get('/api/ai/settings', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_configure_ai) return res.status(403).json({ ok: false, message: 'Permission denied' });
   const settings = await getAiSettingsRaw();
   res.json({ ok: true, settings: publicAiSettings(settings) });
 });
 
 app.put('/api/ai/settings', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_configure_ai) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
     const settings = await upsertAiSettings(req.user.id, req.body);
     res.json({ ok: true, settings });
@@ -1916,19 +2667,47 @@ app.put('/api/ai/settings', requireAuth, requireRole(['admin']), async (req, res
 });
 
 app.post('/api/ai/query', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_use_ai_chat) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  const client = await pool.connect();
   try {
     const question = String(req.body.question || '').trim();
+    const sessionId = normalizeChatSessionId(req.body.session_id);
     if (!question) return res.status(400).json({ ok: false, message: 'Question required' });
+    if (!sessionId) return res.status(400).json({ ok: false, message: 'AI chat session id required' });
     const pageSize = toInt(req.body.pageSize, 50, 1, MAX_PAGE_SIZE);
     const plan = await translateQuestion(question);
-    const result = await queryDatasetRows(req.user, plan.filters, 1, pageSize);
-    const sqlPlan = buildDatasetWhere(req.user, plan.filters);
+    const result = await queryDatasetRows(req.user, plan.filters, 1, pageSize, { searchMode: plan.search_mode });
+    const sqlPlan = buildDatasetWhere(req.user, plan.filters, { searchMode: plan.search_mode });
+    const total = result.pagination.total || 0;
+    const reply = total > 0
+      ? buildAiMatchReply(plan, result.rows || [], total)
+      : buildAiNoResultReply(plan);
+    const preferredMatch = (result.rows || []).find((row) => isLikelyExactMatch(plan.filters.search, row)) || result.rows?.[0] || null;
+    await client.query('BEGIN');
+    const userMessage = await saveChatMessage(client, req.user.id, sessionId, 'user', escapeHtml(question).replace(/\n/g, '<br>'), {
+      kind: 'question',
+      source: 'chat_input',
+    });
+    const aiMessage = await saveChatMessage(client, req.user.id, sessionId, 'assistant', escapeHtml(reply).replace(/\n/g, '<br>'), {
+      kind: 'reply',
+      source: `langchain-${plan.source}`,
+      total,
+      filters: plan.filters,
+    });
+    await client.query('COMMIT');
     res.json({
       ok: true,
       source: `langchain-${plan.source}`,
       provider_error: plan.provider_error,
       explanation: plan.explanation,
+      reply,
+      total,
+      session_id: sessionId,
+      messages: [userMessage, aiMessage],
       filters: plan.filters,
+      search_mode: plan.search_mode,
+      preferred_profile_id: preferredMatch?.id || '',
       schema_keys: plan.schema.keys.map((k) => k.key),
       agent_steps: [
         { tool: 'schema_inspector', output: { table: 'public.dataset_rows', dataset_id: DATASET_ID, jsonb_keys: plan.schema.keys.map((k) => k.key) } },
@@ -1938,8 +2717,22 @@ app.post('/api/ai/query', requireAuth, requireRole(['admin']), async (req, res) 
       ...result,
     });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => { });
     console.error('AI query error:', error);
     res.status(500).json({ ok: false, message: 'AI query failed', error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/ai/history', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const sessionId = normalizeChatSessionId(req.query.session_id);
+    if (!sessionId) return res.status(400).json({ ok: false, message: 'AI chat session id required' });
+    const messages = await loadChatHistory(req.user.id, sessionId);
+    res.json({ ok: true, session_id: sessionId, messages });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: 'AI history load failed', error: error.message });
   }
 });
 
@@ -1964,6 +2757,7 @@ app.use((error, req, res, next) => {
 async function start() {
   await initDatabase();
   await seedDefaultUsers();
+  await initializeLangChainAgent();
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Dataset ${DATASET_ID} is served with server-side pagination`);
