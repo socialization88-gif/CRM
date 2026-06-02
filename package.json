@@ -1,1 +1,71 @@
-{"name":"quantum-fixed-project","version":"1.0.0","main":"server.js","scripts":{"start":"node server.js","link-images":"node link_images.js"},"dependencies":{"@langchain/anthropic":"^1.4.0","@langchain/core":"^1.1.48","@langchain/google-genai":"^2.1.31","@langchain/openai":"^1.4.7","cloudinary":"latest","cors":"latest","dotenv":"latest","express":"latest","multer":"latest","pg":"latest"}}
+{
+  "name": "quantum-work-management",
+  "productName": "QUANTUM Work Management",
+  "description": "QUANTUM work management desktop and web application",
+  "author": "QUANTUM",
+  "version": "1.0.0",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "electron .",
+    "pack:win": "npm exec -- electron-builder --win --x64",
+    "dist:win": "npm exec -- electron-builder --win nsis --x64",
+    "link-images": "node link_images.js"
+  },
+  "devDependencies": {
+    "app-builder-bin": "^5.0.0-alpha.12",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "png-to-ico": "^3.0.1"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^1.4.0",
+    "@langchain/core": "^1.1.48",
+    "@langchain/google-genai": "^2.1.31",
+    "@langchain/openai": "^1.4.7",
+    "bcrypt": "^6.0.0",
+    "cloudinary": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "multer": "latest",
+    "nodemailer": "^8.0.10",
+    "pg": "latest",
+    "playwright-core": "^1.60.0"
+  },
+  "build": {
+    "appId": "com.quantum.workmanagement",
+    "productName": "QUANTUM Work Management",
+    "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!dist-electron/**",
+      "!release/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/Qlogo.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "QUANTUM Work Management",
+      "installerIcon": "assets/Qlogo.ico",
+      "uninstallerIcon": "assets/Qlogo.ico"
+    }
+  }
+}

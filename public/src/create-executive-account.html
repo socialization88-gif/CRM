@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Executive Account</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; }
+.page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  background: #ffffff;
+  font-family: Arial, sans-serif;
+}
+.card {
+  width: min(420px, 100%);
+  background: #dff3ff;
+  border-radius: 30px;
+  padding: 34px 28px;
+  text-align: center;
+  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.25);
+}
+.logo {
+  width: 78px;
+  height: 78px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.title { font-size: 24px; color: #063047; margin: 0 0 8px; }
+.subtitle { font-size: 14px; color: #607d8b; margin: 0 0 24px; line-height: 1.4; }
+.field { text-align: left; margin-bottom: 16px; }
+.field label { display: block; margin-bottom: 7px; font-size: 14px; font-weight: 600; color: #263238; }
+.field input {
+  width: 100%;
+  height: 46px;
+  border: none;
+  outline: none;
+  border-radius: 14px;
+  padding: 0 16px;
+  font-size: 15px;
+  color: #555;
+  background: #ffffff;
+  box-shadow: 8px 8px 12px rgba(0, 0, 0, 0.20);
+}
+.field input:focus { border: 2px solid #008fa3; }
+.btn {
+  width: 100%;
+  height: 46px;
+  border: none;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #006b80, #00a99d);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 6px;
+  box-shadow: 6px 8px 14px rgba(0, 0, 0, 0.30);
+}
+.btn:hover { transform: translateY(-2px); }
+.msg { margin-top: 14px; font-size: 14px; line-height: 1.5; }
+.success { color: #0a6b3a; }
+.error { color: #b42318; }
+.back {
+  display: inline-block;
+  margin-top: 16px;
+  color: #4f4f4f;
+  font-size: 14px;
+  text-decoration: underline;
+}
+@media (max-width: 720px) {
+  .page { padding: .75rem; }
+  .card {
+    width: min(92vw, 420px);
+    padding: clamp(24px, 6vw, 34px) clamp(20px, 5vw, 28px);
+    border-radius: clamp(24px, 6vw, 30px);
+  }
+  .logo {
+    width: clamp(68px, 18vw, 78px);
+    height: clamp(68px, 18vw, 78px);
+    margin-bottom: clamp(16px, 4vw, 20px);
+  }
+  .title { font-size: clamp(22px, 5vw, 24px); }
+  .subtitle { font-size: clamp(13px, 3.2vw, 14px); margin-bottom: clamp(20px, 5vw, 24px); }
+  .field { margin-bottom: clamp(14px, 3.7vw, 16px); }
+  .field label { font-size: clamp(13px, 3.3vw, 14px); }
+  .field input {
+    height: clamp(44px, 11vw, 46px);
+    border-radius: clamp(12px, 3.2vw, 14px);
+    padding: 0 clamp(14px, 4vw, 16px);
+    font-size: clamp(14px, 3.5vw, 15px);
+  }
+  .btn { height: clamp(44px, 11vw, 46px); font-size: clamp(16px, 4vw, 17px); }
+}
+</style>
+</head>
+<body>
+  <div class="page">
+    <form class="card" id="requestForm">
+      <div class="logo">
+        <img src="/assets/Quantum%20logo-01.png" alt="Quantum logo">
+      </div>
+      <h1 class="title">Create Executive Account</h1>
+      <p class="subtitle">
+        Fill out the form below. Your request will go to admin for approval before the account becomes active.
+      </p>
+
+      <div class="field">
+        <label for="fullName">Full Name</label>
+        <input id="fullName" name="fullName" type="text" placeholder="Enter full name" autocomplete="name" required>
+      </div>
+      <div class="field">
+        <label for="phoneNumber">Phone Number</label>
+        <input id="phoneNumber" name="phoneNumber" type="text" placeholder="Enter phone number" autocomplete="tel" required>
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" placeholder="Enter email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" placeholder="Enter password" autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label for="confirmPassword">Confirm Password</label>
+        <input id="confirmPassword" name="confirmPassword" type="password" placeholder="Confirm password" autocomplete="new-password" required>
+      </div>
+
+      <button class="btn" id="submitBtn" type="submit">Submit for Approval</button>
+
+      <div id="successMsg" class="msg success" style="display:none"></div>
+      <div id="errorMsg" class="msg error" style="display:none"></div>
+
+      <a href="/login" class="back">Back to login</a>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('requestForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const successMsg = document.getElementById('successMsg');
+    const errorMsg = document.getElementById('errorMsg');
+
+    function showMessage(el, text) {
+      el.textContent = text;
+      el.style.display = text ? 'block' : 'none';
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showMessage(successMsg, '');
+      showMessage(errorMsg, '');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+
+      try {
+        const payload = {
+          fullName: document.getElementById('fullName').value.trim(),
+          phoneNumber: document.getElementById('phoneNumber').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          password: document.getElementById('password').value,
+          confirmPassword: document.getElementById('confirmPassword').value,
+        };
+
+        const response = await fetch('/api/executive-account-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+          throw new Error(data.message || 'Request submission failed');
+        }
+
+        showMessage(
+          successMsg,
+          'Your form has been submitted successfully. Your account creation request has been sent to the admin for approval. Please wait for admin approval. After admin approval, you will receive a confirmation email. Then you can log in using your email and password.'
+        );
+        form.reset();
+      } catch (error) {
+        showMessage(errorMsg, error.message || 'Request submission failed');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit for Approval';
+      }
+    });
+  </script>
+</body>
+</html>

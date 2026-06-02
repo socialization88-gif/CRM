@@ -1,5 +1,4 @@
 const { Pool } = require('pg');
-const { v2: cloudinary } = require('cloudinary');
 require('dotenv').config();
 
 if (!process.env.DATABASE_URL) {
@@ -10,22 +9,6 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
-
-if (process.env.CLOUDINARY_CLOUD_NAME) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-  });
-}
-
-function cloudinaryOptimized(url) {
-  if (!url) return '';
-  if (!url.includes('res.cloudinary.com')) return url;
-  if (url.includes('/upload/f_auto,q_auto/')) return url;
-  return url.replace('/upload/', '/upload/f_auto,q_auto/');
-}
 
 async function initDatabase() {
   await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
@@ -39,6 +22,8 @@ async function initDatabase() {
       active BOOLEAN NOT NULL DEFAULT TRUE,
       profile_row_id TEXT UNIQUE,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      reset_password_token_hash TEXT,
+      reset_password_token_expires_at TIMESTAMP WITHOUT TIME ZONE,
       created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -46,12 +31,37 @@ async function initDatabase() {
 
   await pool.query("ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS profile_row_id TEXT UNIQUE");
   await pool.query("ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb");
+  await pool.query("ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS reset_password_token_hash TEXT");
+  await pool.query("ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS reset_password_token_expires_at TIMESTAMP WITHOUT TIME ZONE");
 
   await pool.query("UPDATE public.app_users SET role = 'executor' WHERE role = 'executive'");
   await pool.query("DELETE FROM public.app_users WHERE role NOT IN ('admin', 'executor')");
 
   await pool.query('ALTER TABLE public.app_users DROP CONSTRAINT IF EXISTS app_users_role_check');
   await pool.query("ALTER TABLE public.app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('admin', 'executor'))");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.executive_account_requests (
+      id BIGSERIAL PRIMARY KEY,
+      full_name TEXT NOT NULL,
+      phone_number TEXT NOT NULL,
+      email TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+      requested_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at TIMESTAMP WITHOUT TIME ZONE,
+      reviewed_by TEXT REFERENCES public.app_users(id) ON DELETE SET NULL,
+      created_user_id TEXT REFERENCES public.app_users(id) ON DELETE SET NULL,
+      review_notes TEXT NOT NULL DEFAULT ''
+    )
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS executive_account_requests_status_idx ON public.executive_account_requests (status, requested_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS executive_account_requests_email_idx ON public.executive_account_requests (LOWER(email))");
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS executive_account_requests_pending_email_unique
+    ON public.executive_account_requests (LOWER(email))
+    WHERE status = 'pending'
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.app_settings (
@@ -68,7 +78,7 @@ async function initDatabase() {
       dataset_id INTEGER NOT NULL,
       row_id TEXT NOT NULL,
       row_number INTEGER,
-      event_type TEXT NOT NULL CHECK (event_type IN ('assignment', 'profile_update', 'call_update', 'image_upload', 'history_clear')),
+      event_type TEXT NOT NULL CHECK (event_type IN ('assignment', 'profile_update', 'call_update', 'history_clear')),
       actor_id TEXT REFERENCES public.app_users(id) ON DELETE SET NULL,
       actor_name TEXT NOT NULL,
       actor_role TEXT NOT NULL,
@@ -124,9 +134,12 @@ async function initDatabase() {
     ON public.ai_chat_messages (user_id, session_id, created_at DESC, id DESC)
   `);
 
+  await pool.query("UPDATE public.dataset_rows SET data = data - 'image_url', updated_at = CURRENT_TIMESTAMP WHERE data ? 'image_url'");
+  await pool.query("UPDATE public.app_users SET metadata = metadata - 'image_url', updated_at = CURRENT_TIMESTAMP WHERE metadata ? 'image_url'");
+
   await pool.query(`
     INSERT INTO public.app_settings (key, value)
-    VALUES ('permission_settings', '{"admin_create_accounts": true, "admin_assign_profiles": true, "admin_configure_ai": true, "admin_manage_permissions": true, "admin_view_dashboard": true, "admin_rw_all_profiles": true, "admin_use_ai_chat": true, "admin_clear_history": true, "exec_view_assigned_profiles": true, "exec_view_client_details": true, "exec_update_stage_remarks": true, "executive_can_edit_personal_data": true, "exec_manage_attendance": true}'::jsonb)
+    VALUES ('permission_settings', '{"admin_create_accounts": true, "admin_assign_profiles": true, "admin_configure_ai": true, "admin_manage_permissions": true, "admin_view_dashboard": true, "admin_rw_all_profiles": true, "admin_use_ai_chat": true, "admin_clear_history": true, "exec_view_assigned_profiles": true, "exec_view_client_details": true, "exec_update_stage_remarks": true, "executive_can_edit_personal_data": false, "exec_manage_attendance": true}'::jsonb)
     ON CONFLICT (key) DO NOTHING;
   `);
 
@@ -139,6 +152,4 @@ async function initDatabase() {
 
 module.exports = pool;
 module.exports.pool = pool;
-module.exports.cloudinary = cloudinary;
-module.exports.cloudinaryOptimized = cloudinaryOptimized;
 module.exports.initDatabase = initDatabase;

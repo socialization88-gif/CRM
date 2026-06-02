@@ -1,25 +1,36 @@
 require('dotenv').config();
 
 const crypto = require('crypto');
-const fs = require('fs/promises');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const multer = require('multer');
+const bcrypt = require('bcrypt');
+const nodemailer = require('nodemailer');
 const db = require('./db');
 
 const pool = db.pool || db;
-const { cloudinary, cloudinaryOptimized, initDatabase } = db;
+const { initDatabase } = db;
 
 const app = express();
-const upload = multer({
-  dest: path.join(__dirname, 'tmp_uploads'),
-  limits: { fileSize: 8 * 1024 * 1024 },
+let httpServer = null;
+let startupInProgress = false;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled rejection:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
 });
 
 const PORT = Number(process.env.PORT || 3000);
 const DATASET_ID = Number(process.env.DATASET_ID || 2);
 const TOKEN_TTL_SECONDS = 60 * 60 * 12;
+const RESET_PASSWORD_TTL_SECONDS = 60 * 30;
 const MAX_PAGE_SIZE = 500;
 
 const ROW_FIELDS = [
@@ -45,7 +56,6 @@ const ROW_FIELDS = [
   ['Blood Group', 'blood_group'],
   ['Present Address', 'present_address'],
   ['Permanent Address', 'permanent_address'],
-  ['image_url', 'image_url'],
   ['profile_classification', 'profile_classification'],
   ['app_user_id', 'app_user_id'],
   ['family_info', 'family_info'],
@@ -94,7 +104,6 @@ const DATA_EDIT_FIELDS = [
   'assigned_to_email',
   'task_status',
   'admin_instruction',
-  'image_url',
 ];
 
 const EXECUTOR_EDIT_FIELDS = ['Stage', 'Problem', 'Remarks'];
@@ -117,7 +126,6 @@ const PERSONAL_DATA_FIELDS = [
   'family_info',
   'attendance_history',
   'custom_fields',
-  'image_url',
 ];
 const ROLE_VALUES = new Set(['admin', 'executor']);
 const AI_PROVIDERS = new Set(['local', 'openai', 'gemini', 'anthropic']);
@@ -137,11 +145,13 @@ let langChainAgentState = {
   initialized_at: null,
   error: '',
 };
+let mailTransporter = null;
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 function base64url(input) {
   return Buffer.from(input).toString('base64url');
@@ -184,10 +194,125 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
 }
 
 function verifyPassword(password, encoded) {
+  if (String(encoded || '').startsWith('$2')) {
+    return bcrypt.compareSync(String(password), String(encoded || ''));
+  }
   const [kind, iterations, salt, expected] = String(encoded || '').split('$');
   if (kind !== 'pbkdf2' || !iterations || !salt || !expected) return false;
   const actual = crypto.pbkdf2Sync(String(password), salt, Number(iterations), 32, 'sha256').toString('hex');
   return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
+}
+
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function generateResetToken() {
+  const token = crypto.randomBytes(32).toString('hex');
+  return {
+    token,
+    tokenHash: hashResetToken(token),
+  };
+}
+
+function appBaseUrl(req) {
+  const configured = String(process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  const host = req.get('host') || `localhost:${PORT}`;
+  return `${req.protocol}://${host}`;
+}
+
+function getMailTransporter() {
+  if (mailTransporter) return mailTransporter;
+  const host = String(process.env.SMTP_HOST || '').trim();
+  const user = String(process.env.SMTP_USER || '').trim();
+  const pass = String(process.env.SMTP_PASS || '').trim();
+  if (!host || !user || !pass) return null;
+  mailTransporter = nodemailer.createTransport({
+    host,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
+    auth: { user, pass },
+  });
+  return mailTransporter;
+}
+
+async function sendResetPasswordEmail(user, resetUrl) {
+  const transporter = getMailTransporter();
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER || 'noreply@quantum.local';
+  if (!transporter) {
+    console.log(`[password-reset] ${user.email}: ${resetUrl}`);
+    return { sent: false, devLink: resetUrl };
+  }
+  await transporter.sendMail({
+    from,
+    to: user.email,
+    subject: 'Reset your Quantum password',
+    text: `Use this link to reset your password: ${resetUrl}`,
+    html: `<p>Use this link to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p>`,
+  });
+  return { sent: true };
+}
+
+async function sendMailMessage({ to, subject, text, html, logPrefix = 'mail' }) {
+  const transporter = getMailTransporter();
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER || 'noreply@quantum.local';
+  if (!transporter) {
+    console.log(`[${logPrefix}] ${to}: ${text}`);
+    return { sent: false };
+  }
+  await transporter.sendMail({ from, to, subject, text, html });
+  return { sent: true };
+}
+
+async function sendExecutiveRequestSubmissionEmail(request) {
+  const message = 'Your form has been submitted successfully. Your account creation request has been sent to the admin for approval. Please wait for admin approval. After admin approval, you will receive a confirmation email. Then you can log in using your email and password.';
+  return sendMailMessage({
+    to: request.email,
+    subject: 'Executive account request submitted',
+    text: message,
+    html: `<p>${escapeHtml(message)}</p>`,
+    logPrefix: 'executive-request',
+  });
+}
+
+async function sendExecutiveRequestApprovedEmail(request, approvedByName) {
+  const message = `Your executive account request has been approved${approvedByName ? ` by ${approvedByName}` : ''}. You can now log in using your email and password.`;
+  return sendMailMessage({
+    to: request.email,
+    subject: 'Executive account request approved',
+    text: message,
+    html: `<p>${escapeHtml(message)}</p>`,
+    logPrefix: 'executive-approved',
+  });
+}
+
+async function sendExecutiveCredentialsEmail(account, plainPassword) {
+  const message = `Your executive account has been created successfully.\n\nEmail: ${account.email}\nPassword: ${plainPassword}\n\nYou can now log in using these credentials.`;
+  return sendMailMessage({
+    to: account.email,
+    subject: 'Your Executive Account Credentials',
+    text: message,
+    html: `
+      <p>Your executive account has been created successfully.</p>
+      <p><strong>Email:</strong> ${escapeHtml(account.email)}</p>
+      <p><strong>Password:</strong> ${escapeHtml(plainPassword)}</p>
+      <p>You can now log in using these credentials.</p>
+    `,
+    logPrefix: 'executive-created',
+  });
+}
+
+function resetPasswordPagePath() {
+  return path.join(__dirname, 'public', 'src', 'reset-password.html');
+}
+
+function forgotPasswordPagePath() {
+  return path.join(__dirname, 'public', 'src', 'forgot-password.html');
+}
+
+function createExecutiveAccountPagePath() {
+  return path.join(__dirname, 'public', 'src', 'create-executive-account.html');
 }
 
 function escapeHtml(value) {
@@ -253,14 +378,29 @@ async function loadChatHistory(userId, sessionId) {
 
 function safeUser(row) {
   if (!row) return null;
+  const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  const personal = metadata.personal_info && typeof metadata.personal_info === 'object' ? metadata.personal_info : {};
+  const profileData = row.profile_data && typeof row.profile_data === 'object' ? row.profile_data : {};
+  const profilePersonal = profileData.personal_info && typeof profileData.personal_info === 'object' ? profileData.personal_info : {};
+  const phoneNumbers = normalizePhoneNumbers(parseJsonField(metadata.phone_numbers ?? personal.phone_numbers ?? profileData.phone_numbers ?? profilePersonal.phone_numbers, []));
+  const displayName = personal.full_name || profilePersonal.full_name || metadata.full_name || profileData['Full Name'] || profileData.Name || row.name || '';
+  const displayEmail = personal.email || profilePersonal.email || metadata.email || profileData.Email || profileData.email || row.email || '';
+  const roleDetails = metadata.role_details && typeof metadata.role_details === 'object'
+    ? metadata.role_details
+    : buildRoleDetails(row.profile_classification || row.role || 'User', row);
   return {
     id: row.id,
-    name: row.name,
-    email: row.email,
+    name: displayName,
+    email: displayEmail,
     role: row.role,
     active: row.active,
     profile_row_id: row.profile_row_id || null,
-    metadata: row.metadata || {},
+    metadata: { ...metadata, role_details: roleDetails },
+    profile_data: profileData,
+    mobile: personal.mobile || profilePersonal.mobile || metadata.mobile || profileData.mobile || profileData.Mobile || row.mobile || phoneNumbers[0] || '',
+    phone_numbers: phoneNumbers,
+    full_name: personal.full_name || profilePersonal.full_name || metadata.full_name || profileData['Full Name'] || row.name || '',
+    profile_classification: metadata.profile_classification || profileData.profile_classification || row.profile_classification || row.role || '',
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -268,8 +408,25 @@ function safeUser(row) {
 
 async function getUserById(id) {
   const result = await pool.query(
-    'SELECT id, name, email, role, active, profile_row_id, metadata, created_at, updated_at FROM public.app_users WHERE id = $1',
-    [id]
+    `
+    SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.role,
+      u.active,
+      u.profile_row_id,
+      u.metadata,
+      u.created_at,
+      u.updated_at,
+      r.data AS profile_data
+    FROM public.app_users u
+    LEFT JOIN public.dataset_rows r
+      ON r.dataset_id = $2
+     AND r.id::text = u.profile_row_id
+    WHERE u.id = $1
+    `,
+    [id, DATASET_ID]
   );
   return safeUser(result.rows[0]);
 }
@@ -354,6 +511,19 @@ function parseJsonField(value, fallback) {
   }
 }
 
+function normalizePhoneNumbers(value) {
+  const rawList = Array.isArray(value) ? value : value ? [value] : [];
+  const result = [];
+  const seen = new Set();
+  for (const item of rawList.flat ? rawList.flat(Infinity) : rawList) {
+    const phone = String(item ?? '').trim();
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    result.push(phone);
+  }
+  return result;
+}
+
 function normalizeAttendanceList(value) {
   const list = parseJsonField(value, []);
   if (!Array.isArray(list)) return [];
@@ -374,19 +544,78 @@ function normalizeClassification(value) {
   return 'User';
 }
 
+function buildRoleDetails(classification = 'User', account = null) {
+  const role = normalizeClassification(classification);
+  const normalizedAccountRole = String(account?.role || '').toLowerCase();
+  const executiveAccount = normalizedAccountRole === 'executor' ? account : null;
+  const adminAccount = normalizedAccountRole === 'admin' ? account : null;
+  return {
+    classification: role,
+    is_admin: role === 'Admin',
+    is_executive: role === 'Executive',
+    admin_account_id: adminAccount?.id || null,
+    admin_account_name: adminAccount?.name || null,
+    admin_account_email: adminAccount?.email || null,
+    executive_account_id: executiveAccount?.id || null,
+    executive_account_name: executiveAccount?.name || null,
+    executive_account_email: executiveAccount?.email || null,
+  };
+}
+
+function mergeRoleMetadata(metadata = {}, classification = 'User', account = null) {
+  const role = normalizeClassification(classification);
+  return {
+    ...(metadata && typeof metadata === 'object' ? metadata : {}),
+    profile_classification: role,
+    role_details: buildRoleDetails(role, account),
+  };
+}
+
+function parseDobValue(dob) {
+  const value = String(dob || '').trim();
+  if (!value) return null;
+  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const date = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const slashMatch = value.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (slashMatch) {
+    const date = new Date(Number(slashMatch[3]), Number(slashMatch[2]) - 1, Number(slashMatch[1]));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function calculateAgeFromDob(dob) {
+  const birth = parseDobValue(dob);
+  if (!birth) return '';
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDelta = today.getMonth() - birth.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age >= 0 ? String(age) : '';
+}
+
 function normalizeRow(row) {
   const raw = row.raw_data || {};
+  const rawPersonal = raw.personal_info && typeof raw.personal_info === 'object' ? raw.personal_info : {};
   const fullName = row.full_name || row.name || raw['Full Name'] || raw.Name || '';
   const email = row.email || raw.Email || raw.email || '';
-  const mobile = row.mobile || raw.Mobile || '';
+  const phoneNumbers = normalizePhoneNumbers(parseJsonField(row.phone_numbers ?? raw.phone_numbers ?? rawPersonal.phone_numbers, []));
+  const mobile = row.mobile || raw.Mobile || phoneNumbers[0] || '';
   const occupation = row.occupation || row.profession || raw.Occupation || raw.Profession || '';
+  const dateOfBirth = row.date_of_birth || raw['Date of Birth'] || raw.date_of_birth || '';
+  const calculatedAge = calculateAgeFromDob(dateOfBirth);
   const classification = normalizeClassification(row.profile_classification || raw.profile_classification || raw.Classification || raw.Role);
   return {
     ...row,
     date: row.date || raw.Date || '',
     problem: row.problem || raw.Problem || '',
     executive: row.executive || raw.Executive || '',
-    age: row.age || raw.Age || '',
+    age: calculatedAge || row.age || raw.Age || raw.age || '',
+    Age: calculatedAge || row.Age || raw.Age || raw.age || '',
     location: row.location || raw.Location || '',
     stage: row.stage || raw.Stage || '',
     advertisement: row.advertisement || raw.Advertisement || '',
@@ -402,7 +631,7 @@ function normalizeRow(row) {
     profession: row.profession || occupation,
     father_name: row.father_name || raw["Father's Name"] || raw.father_name || '',
     mother_name: row.mother_name || raw["Mother's Name"] || raw.mother_name || '',
-    date_of_birth: row.date_of_birth || raw['Date of Birth'] || raw.date_of_birth || '',
+    date_of_birth: dateOfBirth,
     marital_status: row.marital_status || raw['Marital Status'] || raw.marital_status || '',
     blood_group: row.blood_group || raw['Blood Group'] || raw.blood_group || '',
     present_address: row.present_address || raw['Present Address'] || raw.present_address || row.location || '',
@@ -411,10 +640,11 @@ function normalizeRow(row) {
     family_info: parseJsonField(row.family_info ?? raw.family_info, {}),
     attendance_history: normalizeAttendanceList(row.attendance_history ?? raw.attendance_history),
     custom_fields: parseJsonField(row.custom_fields ?? raw.custom_fields, {}),
+    role_details: parseJsonField(row.role_details ?? raw.role_details, buildRoleDetails(classification)),
+    phone_numbers: phoneNumbers,
     app_user_id: row.app_user_id || raw.app_user_id || '',
     executive_read_at: row.executive_read_at || raw.executive_read_at || '',
     raw_data: raw,
-    image_url: cloudinaryOptimized(row.image_url || raw.image_url || ''),
     assigned_to_name: row.manager_name || row.assigned_to_name || '',
     assigned_to_email: row.manager_email || row.assigned_to_email || '',
   };
@@ -495,19 +725,21 @@ async function syncProfileSoftwareAccount(client, row, actor) {
   const classification = normalizeClassification(data.profile_classification || data.Classification || data.Role);
   const existingAccountId = String(data.app_user_id || '').trim();
   const profileRowId = String(row.id);
+  const roleDetails = buildRoleDetails(classification);
 
   if (classification !== 'Executive') {
     if (existingAccountId || profileRowId) {
       await client.query(`
         UPDATE public.app_users
         SET active = FALSE,
+            profile_row_id = NULL,
             updated_at = CURRENT_TIMESTAMP,
             metadata = metadata || $1::jsonb
         WHERE role = 'executor'
           AND (id = $2 OR profile_row_id = $3)
-      `, [JSON.stringify({ deactivated_by_profile_classification: true }), existingAccountId, profileRowId]);
+      `, [JSON.stringify(mergeRoleMetadata({ deactivated_by_profile_classification: true }, classification)), existingAccountId, profileRowId]);
     }
-    return { account: null, patch: existingAccountId ? { app_user_id: '' } : null };
+    return { account: null, patch: { app_user_id: '', role_details: roleDetails } };
   }
 
   const name = String(data['Full Name'] || data.Name || '').trim() || `Executive ${profileRowId}`;
@@ -535,11 +767,11 @@ async function syncProfileSoftwareAccount(client, row, actor) {
     LIMIT 1
   `, [existingAccountId || `exec-profile-${profileRowId}`, profileRowId, email]);
   const id = existing.rows[0]?.id || existingAccountId || `exec-profile-${profileRowId}`;
-  const metadata = {
+  const metadata = mergeRoleMetadata({
     source: 'profile_promotion',
     promoted_by: actor?.id || null,
     promoted_at: new Date().toISOString(),
-  };
+  }, 'Executive');
 
   const upserted = await client.query(`
     INSERT INTO public.app_users (id, name, email, password_hash, role, active, profile_row_id, metadata)
@@ -555,7 +787,7 @@ async function syncProfileSoftwareAccount(client, row, actor) {
     RETURNING id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
   `, [id, name, email, hashPassword(defaultExecutivePassword()), profileRowId, JSON.stringify(metadata)]);
 
-  const patch = {};
+  const patch = { role_details: buildRoleDetails('Executive', upserted.rows[0]) };
   if (data.app_user_id !== upserted.rows[0].id) patch.app_user_id = upserted.rows[0].id;
   if (!data.Email && !data.email) patch.Email = email;
   return { account: safeUser(upserted.rows[0]), patch: Object.keys(patch).length ? patch : null };
@@ -581,52 +813,26 @@ function buildDatasetWhere(user, filters = {}, options = {}) {
   const searchMode = options.searchMode || 'broad';
 
   if (filters.search) {
-    const searchTerms = buildSearchTerms(filters.search);
-    if (searchTerms.length) {
-      const clauses = [];
-      for (const term of searchTerms) {
-        values.push(term);
-        const p = `$${values.length}`;
-        const searchFields = searchMode === 'entity'
-          ? [
-            { expr: `COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Email', r.data->>'email', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'Mobile', r.data->>'mobile', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'Executive', r.data->>'executive', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'assigned_to_name', '')`, fuzzy: true },
-          ]
-          : [
-            { expr: `COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Email', r.data->>'email', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'Mobile', r.data->>'mobile', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'Location', r.data->>'location', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Problem', r.data->>'problem', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Executive', r.data->>'executive', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Remarks', r.data->>'remarks', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Father''s Name', r.data->>'father_name', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Mother''s Name', r.data->>'mother_name', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Profession', r.data->>'profession', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Occupation', r.data->>'occupation', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Stage', r.data->>'stage', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Date', r.data->>'date', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'Advertisement', r.data->>'advertisement', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Present Address', r.data->>'present_address', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Permanent Address', r.data->>'permanent_address', '')`, fuzzy: true },
-            { expr: `COALESCE(r.data->>'Blood Group', r.data->>'blood_group', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'Marital Status', r.data->>'marital_status', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'task_status', '')`, fuzzy: false },
-            { expr: `COALESCE(r.data->>'assigned_to_name', '')`, fuzzy: true },
-          ];
-        clauses.push(`(
-          ${searchFields.map((field) => {
-          if (field.fuzzy) {
-            return `(${field.expr} ILIKE '%' || ${p} || '%') OR (similarity(${field.expr}, ${p}) > 0.4)`;
-          }
-          return `${field.expr} ILIKE '%' || ${p} || '%'`;
-        }).join(' OR ')}
-        )`);
-      }
-      where.push(`(${clauses.join(' OR ')})`);
+    const searchValue = normalizeText(filters.search);
+    if (searchValue) {
+      const hasBangla = /[\u0980-\u09FF]/.test(searchValue);
+      values.push(searchValue);
+      const p = `$${values.length}`;
+      const nameExpr = `LOWER(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', ''))`;
+      const emailExpr = `LOWER(COALESCE(r.data->>'Email', r.data->>'email', ''))`;
+      const mobileExpr = `LOWER(COALESCE(r.data->>'Mobile', r.data->>'mobile', ''))`;
+      const matchClause = hasBangla
+        ? `(
+            ${nameExpr} LIKE ${p} || '%' OR ${nameExpr} LIKE '%' || ${p} || '%' OR
+            ${emailExpr} LIKE ${p} || '%' OR ${emailExpr} LIKE '%' || ${p} || '%' OR
+            ${mobileExpr} LIKE ${p} || '%' OR ${mobileExpr} LIKE '%' || ${p} || '%'
+          )`
+        : `(
+            ${nameExpr} LIKE ${p} || '%' OR
+            ${emailExpr} LIKE ${p} || '%' OR
+            ${mobileExpr} LIKE ${p} || '%'
+          )`;
+      where.push(matchClause);
     }
   }
 
@@ -668,8 +874,8 @@ function buildDatasetWhere(user, filters = {}, options = {}) {
   }
 
   if (filters.mobile) {
-    values.push(filters.mobile);
-    where.push(`r.data->>'Mobile' ILIKE '%' || $${values.length} || '%'`);
+    values.push(normalizeText(filters.mobile));
+    where.push(`LOWER(COALESCE(r.data->>'Mobile', r.data->>'mobile', '')) LIKE $${values.length} || '%'`);
   }
 
   if (filters.min_age && Number.isFinite(Number(filters.min_age))) {
@@ -696,26 +902,22 @@ async function queryDatasetRows(user, filters, page, pageSize, options = {}) {
   const orderClause = filters.search
     ? `ORDER BY
         CASE
-          WHEN LOWER(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')) = LOWER($2) THEN 0
-          WHEN LOWER(COALESCE(r.data->>'Email', r.data->>'email', '')) = LOWER($2) THEN 1
-          WHEN LOWER(COALESCE(r.data->>'Mobile', r.data->>'mobile', '')) = LOWER($2) THEN 2
-          WHEN LOWER(COALESCE(r.data->>'Executive', r.data->>'executive', '')) = LOWER($2) THEN 3
-          WHEN LOWER(COALESCE(r.data->>'assigned_to_name', '')) = LOWER($2) THEN 4
-          WHEN COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '') ILIKE '%' || $2 || '%' THEN 5
-          ELSE 6
+          WHEN LOWER(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')) = $2 THEN 0
+          WHEN LOWER(COALESCE(r.data->>'Email', r.data->>'email', '')) = $2 THEN 1
+          WHEN LOWER(COALESCE(r.data->>'Mobile', r.data->>'mobile', '')) = $2 THEN 2
+          WHEN LOWER(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')) LIKE $2 || '%' THEN 3
+          WHEN LOWER(COALESCE(r.data->>'Email', r.data->>'email', '')) LIKE $2 || '%' THEN 4
+          WHEN LOWER(COALESCE(r.data->>'Mobile', r.data->>'mobile', '')) LIKE $2 || '%' THEN 5
+          WHEN LOWER(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', '')) LIKE '%' || $2 || '%' THEN 6
+          WHEN LOWER(COALESCE(r.data->>'Email', r.data->>'email', '')) LIKE '%' || $2 || '%' THEN 7
+          WHEN LOWER(COALESCE(r.data->>'Mobile', r.data->>'mobile', '')) LIKE '%' || $2 || '%' THEN 8
+          ELSE 9
         END ASC,
-        GREATEST(
-          similarity(COALESCE(r.data->>'Full Name', r.data->>'Name', r.data->>'full_name', ''), $2),
-          similarity(COALESCE(r.data->>'Location', r.data->>'location', ''), $2),
-          similarity(COALESCE(r.data->>'Problem', r.data->>'problem', ''), $2),
-          similarity(COALESCE(r.data->>'Remarks', r.data->>'remarks', ''), $2),
-          similarity(COALESCE(r.data->>'Executive', r.data->>'executive', ''), $2)
-        ) DESC,
         r.row_number ASC,
         r.id ASC`
     : 'ORDER BY r.row_number ASC, r.id ASC';
   const rowsResult = await pool.query(
-    `${rowSelectSql()} ${where} ${orderClause} LIMIT $${dataValues.length - 1} OFFSET $${dataValues.length}`,
+    `${rowSelectSql()} ${where} ${orderClause} LIMIT $${dataValues.length - 1}::int OFFSET $${dataValues.length}::int`,
     dataValues
   );
 
@@ -743,12 +945,11 @@ async function queryDatasetSummary(user, filters = {}) {
            OR LOWER(COALESCE(r.data->>'Stage', '')) IN ('completed', 'handled')
       )::int AS completed,
       COUNT(*) FILTER (WHERE r.data->>'task_status' = 'Updated')::int AS updated,
-      COUNT(*) FILTER (WHERE COALESCE(r.data->>'image_url', '') <> '')::int AS images,
       COUNT(*) FILTER (WHERE COALESCE(r.data->>'assigned_to', '') = '')::int AS unassigned
     FROM public.dataset_rows r
     ${where}
   `, values);
-  return result.rows[0] || { total: 0, pending: 0, completed: 0, updated: 0, images: 0, unassigned: 0 };
+  return result.rows[0] || { total: 0, pending: 0, completed: 0, updated: 0, unassigned: 0 };
 }
 
 async function queryOverviewDashboard() {
@@ -782,7 +983,7 @@ async function queryOverviewDashboard() {
       FROM public.dataset_row_events
       WHERE dataset_id = $1
         AND deleted_at IS NULL
-        AND event_type IN ('assignment', 'profile_update', 'call_update', 'image_upload')
+        AND event_type IN ('assignment', 'profile_update', 'call_update')
     `, [DATASET_ID]),
     pool.query(`
       SELECT
@@ -790,6 +991,11 @@ async function queryOverviewDashboard() {
         u.name,
         u.email,
         u.active,
+        COALESCE(
+          NULLIF(u.metadata->'personal_info'->>'mobile', ''),
+          NULLIF(u.metadata->>'mobile', ''),
+          ''
+        ) AS mobile,
         COUNT(r.id)::int AS assigned_count,
         COUNT(r.id) FILTER (
           WHERE LOWER(COALESCE(r.data->>'task_status', '')) IN ('completed', 'handled')
@@ -805,8 +1011,10 @@ async function queryOverviewDashboard() {
       FROM public.app_users u
       LEFT JOIN public.dataset_rows r
         ON r.dataset_id = $1 AND r.data->>'assigned_to' = u.id
+      LEFT JOIN public.dataset_rows rp
+        ON rp.dataset_id = $1 AND rp.id::text = u.profile_row_id
       WHERE u.role = 'executor' AND u.active = TRUE
-      GROUP BY u.id, u.name, u.email, u.active
+      GROUP BY u.id, u.name, u.email, u.active, rp.data, u.metadata
       ORDER BY assigned_count DESC, u.name
     `, [DATASET_ID]),
   ]);
@@ -867,7 +1075,6 @@ async function queryExecutiveDashboard(user) {
       SELECT
         r.id::text AS id,
         r.row_number,
-        COALESCE(r.data->>'image_url', '') AS image_url,
         COALESCE(NULLIF(r.data->>'Full Name', ''), NULLIF(r.data->>'Name', ''), NULLIF(r.data->>'full_name', ''), '') AS name,
         COALESCE(NULLIF(r.data->>'Email', ''), NULLIF(r.data->>'email', ''), '') AS email,
         COALESCE(NULLIF(r.data->>'Mobile', ''), NULLIF(r.data->>'mobile', ''), '') AS mobile,
@@ -899,15 +1106,14 @@ async function queryExecutiveDashboard(user) {
     completion_percentage: 0,
   };
 
-  return {
-    ...stats,
-    assigned_rows: rowsResult.rows.map((row) => ({
-      id: row.id,
-      row_number: row.row_number,
-      image_url: cloudinaryOptimized(row.image_url),
-      name: row.name,
-      email: row.email,
-      mobile: row.mobile,
+    return {
+      ...stats,
+      assigned_rows: rowsResult.rows.map((row) => ({
+        id: row.id,
+        row_number: row.row_number,
+        name: row.name,
+        email: row.email,
+        mobile: row.mobile,
       assigned_at: row.assigned_at,
       executive_read_at: row.executive_read_at,
       task_status: row.task_status,
@@ -1058,6 +1264,80 @@ async function savePermissionSettings(userId, settings) {
           updated_at = CURRENT_TIMESTAMP
   `, [JSON.stringify(value), userId]);
   return value;
+}
+
+async function getProgramSettings() {
+  const result = await pool.query("SELECT value FROM public.app_settings WHERE key = 'program_settings'");
+  const val = result.rows[0]?.value || {};
+  return {
+    program_name: String(val.program_name || '').trim(),
+  };
+}
+
+async function saveProgramSettings(userId, settings) {
+  const value = {
+    program_name: String(settings.program_name || '').trim(),
+  };
+  await pool.query(`
+    INSERT INTO public.app_settings (key, value, updated_by, updated_at)
+    VALUES ('program_settings', $1::jsonb, $2, CURRENT_TIMESTAMP)
+    ON CONFLICT (key) DO UPDATE
+      SET value = EXCLUDED.value,
+          updated_by = EXCLUDED.updated_by,
+          updated_at = CURRENT_TIMESTAMP
+  `, [JSON.stringify(value), userId]);
+  return value;
+}
+
+async function backfillRoleDetailsSchema() {
+  await pool.query(`
+    UPDATE public.dataset_rows
+    SET data = jsonb_set(
+      data,
+      '{role_details}',
+      COALESCE(
+        data->'role_details',
+        jsonb_build_object(
+          'classification', COALESCE(NULLIF(data->>'profile_classification', ''), 'User'),
+          'is_admin', CASE WHEN COALESCE(NULLIF(data->>'profile_classification', ''), 'User') = 'Admin' THEN true ELSE false END,
+          'is_executive', CASE WHEN COALESCE(NULLIF(data->>'profile_classification', ''), 'User') = 'Executive' THEN true ELSE false END,
+          'admin_account_id', NULL,
+          'admin_account_name', NULL,
+          'admin_account_email', NULL,
+          'executive_account_id', NULL,
+          'executive_account_name', NULL,
+          'executive_account_email', NULL
+        )
+      ),
+      true
+    )
+    WHERE dataset_id = $1
+      AND (data->'role_details' IS NULL OR jsonb_typeof(data->'role_details') <> 'object')
+  `, [DATASET_ID]);
+
+  await pool.query(`
+    UPDATE public.app_users
+    SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+      'role_details',
+      COALESCE(
+        metadata->'role_details',
+        jsonb_build_object(
+          'classification', CASE WHEN role = 'admin' THEN 'Admin' ELSE 'Executive' END,
+          'is_admin', CASE WHEN role = 'admin' THEN true ELSE false END,
+          'is_executive', CASE WHEN role = 'executor' THEN true ELSE false END,
+          'admin_account_id', NULL,
+          'admin_account_name', NULL,
+          'admin_account_email', NULL,
+          'executive_account_id', NULL,
+          'executive_account_name', NULL,
+          'executive_account_email', NULL
+        )
+      )
+    ),
+    updated_at = CURRENT_TIMESTAMP
+    WHERE role IN ('admin', 'executor')
+      AND (metadata->'role_details' IS NULL OR jsonb_typeof(metadata->'role_details') <> 'object')
+  `);
 }
 
 function publicAiSettings(settings) {
@@ -1787,6 +2067,22 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+app.get('/forgot-password', (req, res) => {
+  res.sendFile(forgotPasswordPagePath());
+});
+
+app.get('/reset-password/:token', (req, res) => {
+  res.sendFile(resetPasswordPagePath());
+});
+
+app.get('/reset-password', (req, res) => {
+  res.sendFile(resetPasswordPagePath());
+});
+
+app.get('/create-executive-account', (req, res) => {
+  res.sendFile(createExecutiveAccountPagePath());
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     const [dbTime, rowCount] = await Promise.all([
@@ -1831,6 +2127,281 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ ok: false, message: 'Email required' });
+
+    const result = await pool.query(
+      `SELECT id, name, email, role, active FROM public.app_users WHERE LOWER(email) = $1 LIMIT 1`,
+      [email]
+    );
+    const user = result.rows[0];
+    if (user && user.active) {
+      const { token, tokenHash } = generateResetToken();
+      const expiresAt = new Date(Date.now() + RESET_PASSWORD_TTL_SECONDS * 1000);
+      const resetUrl = `${appBaseUrl(req)}/reset-password/${encodeURIComponent(token)}`;
+      await pool.query(
+        `
+        UPDATE public.app_users
+        SET reset_password_token_hash = $2,
+            reset_password_token_expires_at = $3,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        `,
+        [user.id, tokenHash, expiresAt]
+      );
+      const mailResult = await sendResetPasswordEmail(user, resetUrl);
+      return res.json({
+        ok: true,
+        message: 'If the email exists, a reset link has been sent.',
+        ...(mailResult.devLink ? { dev_reset_link: mailResult.devLink } : {}),
+      });
+    }
+
+    return res.json({
+      ok: true,
+      message: 'If the email exists, a reset link has been sent.',
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ ok: false, message: 'Password reset request failed', error: error.message });
+  }
+});
+
+app.get(['/api/auth/reset-password/validate', '/api/auth/reset-password/validate/:token'], async (req, res) => {
+  try {
+    const token = String(req.params.token || req.query.token || '').trim();
+    if (!token) return res.status(400).json({ ok: false, message: 'Token required' });
+    const tokenHash = hashResetToken(token);
+    const result = await pool.query(
+      `
+      SELECT id, email, reset_password_token_expires_at
+      FROM public.app_users
+      WHERE reset_password_token_hash = $1
+        AND reset_password_token_expires_at IS NOT NULL
+        AND reset_password_token_expires_at > CURRENT_TIMESTAMP
+      LIMIT 1
+      `,
+      [tokenHash]
+    );
+    if (!result.rows.length) return res.status(400).json({ ok: false, message: 'Reset link is invalid or expired' });
+    res.json({ ok: true, email: result.rows[0].email });
+  } catch (error) {
+    console.error('Reset password validate error:', error);
+    res.status(500).json({ ok: false, message: 'Reset link validation failed', error: error.message });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const token = String(req.body.token || '').trim();
+    const password = String(req.body.password || '').trim();
+    const confirmPassword = String(req.body.confirmPassword || '').trim();
+    if (!token || !password || !confirmPassword) return res.status(400).json({ ok: false, message: 'Token and new password required' });
+    if (password !== confirmPassword) return res.status(400).json({ ok: false, message: 'Passwords do not match' });
+    if (password.length < 6) return res.status(400).json({ ok: false, message: 'Password must be at least 6 characters' });
+
+    const tokenHash = hashResetToken(token);
+    const result = await pool.query(
+      `
+      SELECT id
+      FROM public.app_users
+      WHERE reset_password_token_hash = $1
+        AND reset_password_token_expires_at IS NOT NULL
+        AND reset_password_token_expires_at > CURRENT_TIMESTAMP
+      LIMIT 1
+      `,
+      [tokenHash]
+    );
+    const user = result.rows[0];
+    if (!user) return res.status(400).json({ ok: false, message: 'Reset link is invalid or expired' });
+
+    await pool.query(
+      `
+      UPDATE public.app_users
+      SET password_hash = $2,
+          reset_password_token_hash = NULL,
+          reset_password_token_expires_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      `,
+      [user.id, bcrypt.hashSync(password, 12)]
+    );
+
+    res.json({ ok: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ ok: false, message: 'Password reset failed', error: error.message });
+  }
+});
+
+app.post('/api/executive-account-requests', async (req, res) => {
+  try {
+    const fullName = String(req.body.fullName || req.body.name || '').trim();
+    const phoneNumber = String(req.body.phoneNumber || req.body.phone || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '').trim();
+    const confirmPassword = String(req.body.confirmPassword || '').trim();
+
+    if (!fullName || !phoneNumber || !email || !password || !confirmPassword) {
+      return res.status(400).json({ ok: false, message: 'All fields are required' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ ok: false, message: 'Password and confirm password must match' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ ok: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const existingAccount = await pool.query(
+      `SELECT id FROM public.app_users WHERE LOWER(email) = $1 LIMIT 1`,
+      [email]
+    );
+    if (existingAccount.rows.length) {
+      return res.status(409).json({ ok: false, message: 'Email already exists' });
+    }
+
+    const existingRequest = await pool.query(
+      `SELECT id FROM public.executive_account_requests WHERE LOWER(email) = $1 AND status = 'pending' LIMIT 1`,
+      [email]
+    );
+    if (existingRequest.rows.length) {
+      return res.status(409).json({ ok: false, message: 'A pending request already exists for this email' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const created = await pool.query(
+      `
+      INSERT INTO public.executive_account_requests (full_name, phone_number, email, password_hash, status)
+      VALUES ($1, $2, $3, $4, 'pending')
+      RETURNING id, full_name, phone_number, email, status, requested_at
+      `,
+      [fullName, phoneNumber, email, passwordHash]
+    );
+    const request = created.rows[0];
+
+    const mailResult = await sendExecutiveRequestSubmissionEmail(request);
+
+    res.status(201).json({
+      ok: true,
+      message: 'Your request has been submitted and sent to admin for approval.',
+      ...(mailResult.sent ? {} : { dev_notice: 'Email service is not configured; a dev log was generated.' }),
+    });
+  } catch (error) {
+    console.error('Executive request submit error:', error);
+    const message = error.code === '23505' ? 'Email already exists' : error.message;
+    res.status(500).json({ ok: false, message: message || 'Request submission failed' });
+  }
+});
+
+app.get('/api/admin/executive-account-requests', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const perms = await getPermissionSettings();
+    if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
+    const result = await pool.query(`
+      SELECT id, full_name, phone_number, email, status, requested_at, reviewed_at, reviewed_by, created_user_id
+      FROM public.executive_account_requests
+      WHERE status = 'pending'
+      ORDER BY requested_at ASC, id ASC
+    `);
+    res.json({ ok: true, requests: result.rows });
+  } catch (error) {
+    console.error('Load executive requests error:', error);
+    res.status(500).json({ ok: false, message: 'Failed to load executive requests', error: error.message });
+  }
+});
+
+app.post('/api/admin/executive-account-requests/:id/approve', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  const client = await pool.connect();
+  try {
+    const requestId = String(req.params.id || '').trim();
+    if (!requestId) return res.status(400).json({ ok: false, message: 'Request id required' });
+
+    await client.query('BEGIN');
+    const requestResult = await client.query(`
+      SELECT id, full_name, phone_number, email, password_hash, status, requested_at
+      FROM public.executive_account_requests
+      WHERE id = $1
+      FOR UPDATE
+    `, [requestId]);
+
+    const request = requestResult.rows[0];
+    if (!request) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'Request not found' });
+    }
+    if (request.status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, message: 'This request is no longer pending' });
+    }
+
+    const duplicate = await client.query(
+      `SELECT id FROM public.app_users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [request.email]
+    );
+    if (duplicate.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ ok: false, message: 'An account already exists for this email' });
+    }
+
+    const approvedUserId = `executor-req-${request.id}`;
+    const metadata = mergeRoleMetadata({
+      source: 'executive_account_request',
+      request_id: request.id,
+      request_phone_number: request.phone_number,
+      request_status: 'approved',
+      approved_by: req.user.id,
+      approved_by_name: req.user.name,
+      approved_at: new Date().toISOString(),
+    }, 'Executive');
+
+    const insertedUser = await client.query(`
+      INSERT INTO public.app_users (id, name, email, password_hash, role, active, metadata)
+      VALUES ($1, $2, $3, $4, 'executor', TRUE, $5::jsonb)
+      RETURNING id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
+    `, [
+      approvedUserId,
+      request.full_name,
+      request.email,
+      request.password_hash,
+      JSON.stringify(metadata),
+    ]);
+
+    await client.query(`
+      UPDATE public.executive_account_requests
+      SET status = 'approved',
+          reviewed_at = CURRENT_TIMESTAMP,
+          reviewed_by = $2,
+          created_user_id = $3
+      WHERE id = $1
+    `, [request.id, req.user.id, insertedUser.rows[0].id]);
+
+    await client.query('COMMIT');
+
+    await sendExecutiveRequestApprovedEmail(
+      { email: request.email, full_name: request.full_name },
+      req.user.name
+    ).catch((error) => {
+      console.error('Approval email failed:', error);
+    });
+
+    res.json({
+      ok: true,
+      message: 'Executive request approved and account created',
+      user: safeUser(insertedUser.rows[0]),
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => { });
+    console.error('Approve executive request error:', error);
+    res.status(500).json({ ok: false, message: 'Approval failed', error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ ok: true, user: req.user });
 });
@@ -1839,12 +2410,115 @@ app.get('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
   const perms = await getPermissionSettings();
   if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied: Create & manage accounts' });
   const users = await pool.query(`
-    SELECT id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
-    FROM public.app_users
-    WHERE role IN ('admin', 'executor')
-    ORDER BY role, name
-  `);
+    SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.role,
+      u.active,
+      u.profile_row_id,
+      u.metadata,
+      u.created_at,
+      u.updated_at,
+      r.data AS profile_data
+    FROM public.app_users u
+    LEFT JOIN public.dataset_rows r
+      ON r.dataset_id = $1
+     AND r.id::text = u.profile_row_id
+    WHERE u.role IN ('admin', 'executor')
+    ORDER BY u.role, u.name
+  `, [DATASET_ID]);
   res.json({ ok: true, users: users.rows.map(safeUser) });
+});
+
+app.get('/api/executive-accounts', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied: Create & manage accounts' });
+  const users = await pool.query(`
+    SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.role,
+      u.active,
+      u.profile_row_id,
+      u.metadata,
+      u.created_at,
+      u.updated_at,
+      r.data AS profile_data
+    FROM public.app_users u
+    LEFT JOIN public.dataset_rows r
+      ON r.dataset_id = $1
+     AND r.id::text = u.profile_row_id
+    WHERE u.role = 'executor'
+      AND u.active = TRUE
+    ORDER BY u.name
+  `, [DATASET_ID]);
+  res.json({ ok: true, executives: users.rows.map(safeUser) });
+});
+
+app.post('/api/admin/executive-accounts', requireAuth, requireRole(['admin']), async (req, res) => {
+  const perms = await getPermissionSettings();
+  if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
+  try {
+    const name = String(req.body.name || req.body.fullName || '').trim();
+    const phoneNumber = String(req.body.phoneNumber || req.body.phone || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '').trim();
+    const confirmPassword = String(req.body.confirmPassword || '').trim();
+
+    if (!name || !phoneNumber || !email || !password || !confirmPassword) {
+      return res.status(400).json({ ok: false, message: 'Full name, phone, email and password are required' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ ok: false, message: 'Password and confirm password must match' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ ok: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const duplicate = await pool.query(
+      `SELECT id FROM public.app_users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+    if (duplicate.rows.length) {
+      return res.status(409).json({ ok: false, message: 'Email already exists' });
+    }
+
+    const id = `executor-${crypto.randomUUID()}`;
+    const metadata = mergeRoleMetadata({
+      source: 'admin_direct_create',
+      phone_number: phoneNumber,
+      mobile: phoneNumber,
+      personal_info: {
+        full_name: name,
+        email,
+        mobile: phoneNumber,
+      },
+    }, 'Executive');
+
+    const result = await pool.query(`
+      INSERT INTO public.app_users (id, name, email, password_hash, role, active, metadata)
+      VALUES ($1, $2, $3, $4, 'executor', TRUE, $5::jsonb)
+      RETURNING id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
+    `, [id, name, email, hashPassword(password), JSON.stringify(metadata)]);
+
+    const user = safeUser(result.rows[0]);
+    await sendExecutiveCredentialsEmail(user, password).catch((error) => {
+      console.error('Executive credentials email failed:', error);
+    });
+
+    res.status(201).json({
+      ok: true,
+      message: 'Executive account created successfully',
+      user,
+      dev_notice: 'Confirmation mail was sent or logged.',
+    });
+  } catch (error) {
+    const message = error.code === '23505' ? 'Email already exists' : error.message;
+    console.error('Admin executive create error:', error);
+    res.status(500).json({ ok: false, message });
+  }
 });
 
 app.post('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
@@ -1855,15 +2529,17 @@ app.post('/api/users', requireAuth, requireRole(['admin']), async (req, res) => 
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '').trim();
     const role = normalizeSoftwareRole(req.body.role, 'executor');
+    const metadata = req.body.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {};
     if (!name || !email || !password) return res.status(400).json({ ok: false, message: 'Name, email and password required' });
     if (!ROLE_VALUES.has(role)) return res.status(400).json({ ok: false, message: 'Invalid role' });
 
     const id = `${role}-${crypto.randomUUID()}`;
+    const finalMetadata = mergeRoleMetadata(metadata, role, { id, name, email, role, active: true });
     const result = await pool.query(`
-      INSERT INTO public.app_users (id, name, email, password_hash, role, active)
-      VALUES ($1, $2, $3, $4, $5, TRUE)
+      INSERT INTO public.app_users (id, name, email, password_hash, role, active, metadata)
+      VALUES ($1, $2, $3, $4, $5, TRUE, $6::jsonb)
       RETURNING id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
-    `, [id, name, email, hashPassword(password), role]);
+    `, [id, name, email, hashPassword(password), role, JSON.stringify(finalMetadata)]);
     res.status(201).json({ ok: true, user: safeUser(result.rows[0]) });
   } catch (error) {
     const message = error.code === '23505' ? 'Email already exists' : error.message;
@@ -1875,10 +2551,13 @@ app.put('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) 
   const perms = await getPermissionSettings();
   if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
   try {
+    const current = await pool.query(`SELECT id, name, email, role, active, profile_row_id, metadata FROM public.app_users WHERE id = $1 LIMIT 1`, [req.params.id]);
+    if (!current.rows.length) return res.status(404).json({ ok: false, message: 'User not found' });
     const patch = {};
     for (const key of ['name', 'email', 'role', 'active']) {
       if (Object.prototype.hasOwnProperty.call(req.body, key)) patch[key] = req.body[key];
     }
+    const metadataPatch = req.body.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : null;
     if (patch.role !== undefined) patch.role = normalizeSoftwareRole(patch.role, 'executor');
     if (patch.role && !ROLE_VALUES.has(String(patch.role))) return res.status(400).json({ ok: false, message: 'Invalid role' });
 
@@ -1905,6 +2584,16 @@ app.put('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) 
       sets.push(`password_hash = $${i++}`);
       values.push(hashPassword(req.body.password));
     }
+    const effectiveRole = String(patch.role || current.rows[0].role || 'executor');
+    if (metadataPatch || patch.role !== undefined) {
+      const mergedMetadata = mergeRoleMetadata(
+        { ...(current.rows[0].metadata && typeof current.rows[0].metadata === 'object' ? current.rows[0].metadata : {}), ...(metadataPatch || {}) },
+        effectiveRole,
+        { id: current.rows[0].id, name: patch.name ?? current.rows[0].name, email: patch.email ?? current.rows[0].email, role: effectiveRole, active: patch.active ?? current.rows[0].active }
+      );
+      sets.push(`metadata = $${i++}::jsonb`);
+      values.push(JSON.stringify(mergedMetadata));
+    }
     if (!sets.length) return res.status(400).json({ ok: false, message: 'No update fields sent' });
 
     sets.push('updated_at = CURRENT_TIMESTAMP');
@@ -1928,34 +2617,82 @@ app.delete('/api/users/:id', requireAuth, requireRole(['admin']), async (req, re
   if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied' });
   const client = await pool.connect();
   try {
-    const userId = String(req.params.id || '').trim();
-    if (!userId) return res.status(400).json({ ok: false, message: 'User id required' });
-    if (userId === req.user.id) return res.status(400).json({ ok: false, message: 'You cannot delete your own account' });
+    const rawId = String(req.params.id || '').trim();
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const fallbackId = String(body.id || '').trim();
+    const fallbackProfileRowId = String(body.profile_row_id || '').trim();
+    const fallbackEmail = String(body.email || '').trim().toLowerCase();
+    const fallbackName = String(body.name || '').trim();
+    const lookupKeys = [...new Set([rawId, fallbackId].filter(Boolean))];
+    if (!lookupKeys.length && !fallbackProfileRowId && !fallbackEmail && !fallbackName) {
+      return res.status(400).json({ ok: false, message: 'User id required' });
+    }
+
+    const findTarget = async () => {
+      for (const key of lookupKeys) {
+        const exact = await client.query(`
+          SELECT id, name, email, role, active, profile_row_id, metadata
+          FROM public.app_users
+          WHERE id = $1
+          FOR UPDATE
+        `, [key]);
+        if (exact.rows.length) return exact.rows[0];
+      }
+      if (fallbackProfileRowId) {
+        const byProfileRow = await client.query(`
+          SELECT id, name, email, role, active, profile_row_id, metadata
+          FROM public.app_users
+          WHERE profile_row_id = $1
+          FOR UPDATE
+        `, [fallbackProfileRowId]);
+        if (byProfileRow.rows.length) return byProfileRow.rows[0];
+      }
+      if (fallbackEmail) {
+        const byEmail = await client.query(`
+          SELECT id, name, email, role, active, profile_row_id, metadata
+          FROM public.app_users
+          WHERE LOWER(email) = LOWER($1)
+          FOR UPDATE
+        `, [fallbackEmail]);
+        if (byEmail.rows.length === 1) return byEmail.rows[0];
+        if (byEmail.rows.length > 1) return null;
+      }
+      if (fallbackName) {
+        const byName = await client.query(`
+          SELECT id, name, email, role, active, profile_row_id, metadata
+          FROM public.app_users
+          WHERE LOWER(name) = LOWER($1)
+          FOR UPDATE
+        `, [fallbackName]);
+        if (byName.rows.length === 1) return byName.rows[0];
+        if (byName.rows.length > 1) return null;
+      }
+      return null;
+    };
 
     await client.query('BEGIN');
-    const target = await client.query(`
-      SELECT id, name, email, role, active, profile_row_id, metadata
-      FROM public.app_users
-      WHERE id = $1 AND role = 'executor'
-      FOR UPDATE
-    `, [userId]);
-    if (!target.rows.length) {
+    const target = await findTarget();
+    if (!target) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ ok: false, message: 'Executive account not found' });
+      return res.status(404).json({ ok: false, message: 'Account not found' });
+    }
+    if (String(target.id) === String(req.user.id)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, message: 'You cannot delete your own account' });
     }
 
     const deleted = await client.query(`
       DELETE FROM public.app_users
-      WHERE id = $1 AND role = 'executor'
+      WHERE id = $1
       RETURNING id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
-    `, [userId]);
+    `, [target.id]);
     if (!deleted.rows.length) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ ok: false, message: 'Executive account not found' });
+      return res.status(404).json({ ok: false, message: 'Account not found' });
     }
 
     await client.query('COMMIT');
-    res.json({ ok: true, message: 'Executive account deleted', user: safeUser(deleted.rows[0]) });
+    res.json({ ok: true, message: 'Account deleted', user: safeUser(deleted.rows[0]) });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => { });
     res.status(500).json({ ok: false, message: 'Delete failed', error: error.message });
@@ -1966,11 +2703,24 @@ app.delete('/api/users/:id', requireAuth, requireRole(['admin']), async (req, re
 
 app.get('/api/executives', requireAuth, requireRole(['admin', 'executor']), async (req, res) => {
   const result = await pool.query(`
-    SELECT id, name, email, role, active, profile_row_id, metadata, created_at, updated_at
-    FROM public.app_users
-    WHERE role = 'executor' AND active = TRUE
-    ORDER BY name
-  `);
+    SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.role,
+      u.active,
+      u.profile_row_id,
+      u.metadata,
+      u.created_at,
+      u.updated_at,
+      r.data AS profile_data
+    FROM public.app_users u
+    LEFT JOIN public.dataset_rows r
+      ON r.dataset_id = $1
+     AND r.id::text = u.profile_row_id
+    WHERE u.role = 'executor' AND u.active = TRUE
+    ORDER BY u.name
+  `, [DATASET_ID]);
   res.json({ ok: true, executives: result.rows.map(safeUser) });
 });
 
@@ -2328,6 +3078,14 @@ app.put('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor'])
     if (patch['Full Name'] !== undefined) patch.Name = patch['Full Name'];
     if (patch.Occupation !== undefined) patch.Profession = patch.Occupation;
     if (patch['Present Address'] !== undefined && patch.Location === undefined) patch.Location = patch['Present Address'];
+    const dobValue = patch['Date of Birth'] ?? patch.date_of_birth ?? patch['date_of_birth'];
+    if (dobValue !== undefined) {
+      const calculatedAge = calculateAgeFromDob(dobValue);
+      patch['Date of Birth'] = dobValue;
+      patch.date_of_birth = dobValue;
+      patch.Age = calculatedAge;
+      patch.age = calculatedAge;
+    }
 
     if (patch.Stage && !CALL_STAGE_OPTIONS.includes(String(patch.Stage))) {
       return res.status(400).json({ ok: false, message: 'Invalid call details stage' });
@@ -2363,7 +3121,12 @@ app.put('/api/dataset-rows/:id', requireAuth, requireRole(['admin', 'executor'])
 
     let updatedRow = result.rows[0];
     let accountNote = '';
-    if (req.user.role === 'admin' && Object.prototype.hasOwnProperty.call(patch, 'profile_classification')) {
+    const rowClassification = normalizeClassification(updatedRow.data?.profile_classification || updatedRow.data?.Classification || updatedRow.data?.Role);
+    const shouldSyncSoftwareAccount = req.user.role === 'admin'
+      && (Object.prototype.hasOwnProperty.call(patch, 'profile_classification')
+        || String(updatedRow.data?.app_user_id || '').trim()
+        || rowClassification === 'Executive');
+    if (shouldSyncSoftwareAccount) {
       const sync = await syncProfileSoftwareAccount(client, updatedRow, req.user);
       if (sync.patch) {
         const syncChanges = buildChangeSet(updatedRow.data, sync.patch);
@@ -2488,46 +3251,6 @@ app.delete('/api/dataset-rows/:id/attendance/:index', requireAuth, requireRole([
   }
 });
 
-app.post('/api/upload/profile-image/:id', requireAuth, requireRole(['admin', 'executor']), upload.single('image'), async (req, res) => {
-  try {
-    if (!process.env.CLOUDINARY_CLOUD_NAME) return res.status(500).json({ ok: false, message: 'Cloudinary .env missing' });
-    if (!req.file) return res.status(400).json({ ok: false, message: 'image file required' });
-
-    if (req.user.role === 'executor') {
-      const permissions = await getPermissionSettings();
-      if (!permissions.executive_can_edit_personal_data) {
-        return res.status(403).json({ ok: false, message: 'Executive personal-data editing is currently revoked by Admin' });
-      }
-    }
-
-    const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-      folder: process.env.CLOUDINARY_FOLDER || 'quantum-profiles',
-      public_id: `dataset_row_${req.params.id}_${Date.now()}`,
-      overwrite: true,
-      resource_type: 'image',
-    });
-    const optimizedUrl = cloudinary.url(uploadResult.public_id, { fetch_format: 'auto', quality: 'auto', secure: true });
-    const updated = await pool.query(`
-      UPDATE public.dataset_rows
-      SET data = data || $1::jsonb,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE dataset_id = $2 AND id::text = $3
-      RETURNING id::text, row_number, data
-    `, [JSON.stringify({ image_url: optimizedUrl }), DATASET_ID, String(req.params.id)]);
-    if (updated.rows[0]) {
-      await insertRowEvent(pool, updated.rows[0], 'image_upload', req.user, {
-        image_url: { from: '', to: optimizedUrl },
-      }, 'Profile image uploaded');
-    }
-    res.json({ ok: true, image_url: optimizedUrl });
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ ok: false, message: 'Image upload failed', error: error.message });
-  } finally {
-    if (req.file?.path) fs.unlink(req.file.path).catch(() => { });
-  }
-});
-
 app.post('/api/dataset-rows/:id/read', requireAuth, requireRole(['executor']), async (req, res) => {
   try {
     const readAt = new Date().toISOString();
@@ -2648,6 +3371,24 @@ app.put('/api/settings/permissions', requireAuth, requireRole(['admin']), async 
   }
 });
 
+app.get('/api/settings/program', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const settings = await getProgramSettings();
+    res.json({ ok: true, settings });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: 'Program settings load failed', error: error.message });
+  }
+});
+
+app.put('/api/settings/program', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const settings = await saveProgramSettings(req.user.id, req.body);
+    res.json({ ok: true, settings });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message });
+  }
+});
+
 app.get('/api/ai/settings', requireAuth, requireRole(['admin']), async (req, res) => {
   const perms = await getPermissionSettings();
   if (!perms.admin_configure_ai) return res.status(403).json({ ok: false, message: 'Permission denied' });
@@ -2755,16 +3496,39 @@ app.use((error, req, res, next) => {
 });
 
 async function start() {
-  await initDatabase();
-  await seedDefaultUsers();
-  await initializeLangChainAgent();
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Dataset ${DATASET_ID} is served with server-side pagination`);
+  if (startupInProgress || httpServer) return;
+  startupInProgress = true;
+  while (!httpServer) {
+    try {
+      await initDatabase();
+      await seedDefaultUsers();
+      await backfillRoleDetailsSchema();
+      await initializeLangChainAgent();
+      httpServer = app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Dataset ${DATASET_ID} is served with server-side pagination`);
+      });
+      httpServer.on('error', (error) => {
+        console.error('HTTP server error:', error);
+      });
+      startupInProgress = false;
+      return;
+    } catch (error) {
+      console.error('Startup failed:', error);
+      console.log(`Retrying server startup in ${Math.max(1000, Number(process.env.STARTUP_RETRY_MS || 5000))}ms...`);
+      await delay(Math.max(1000, Number(process.env.STARTUP_RETRY_MS || 5000)));
+    }
+  }
+  startupInProgress = false;
+}
+
+if (require.main === module) {
+  start().catch((error) => {
+    console.error('Startup failed:', error);
   });
 }
 
-start().catch((error) => {
-  console.error('Startup failed:', error);
-  process.exit(1);
-});
+module.exports = {
+  app,
+  start,
+};
