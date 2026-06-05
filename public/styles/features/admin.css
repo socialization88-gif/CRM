@@ -1,0 +1,234 @@
+.admin-only,
+.admin-only.block,
+.admin-only.grid {
+  display: none;
+}
+
+body.is-admin .admin-only {
+  display: inline-flex;
+}
+
+body.is-admin .admin-only.block {
+  display: block;
+}
+
+body.is-admin .admin-only.grid {
+  display: grid;
+}
+
+body.is-admin .view.admin-only {
+  display: none;
+}
+
+body.is-admin .view.admin-only.active {
+  display: block;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: .75rem;
+  align-items: start;
+}
+
+.accounts-stack {
+  display: grid;
+  gap: .75rem;
+  height: 100%;
+}
+
+#accountsView .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+#accountsView .panel-head {
+  padding: .55rem .75rem;
+  top: 0;
+}
+
+#accountsView .table-scroll {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+.form-card {
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: .65rem;
+}
+
+.switch {
+  position: relative;
+  width: 50px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.switch input {
+  display: none;
+}
+
+.switch span {
+  position: absolute;
+  inset: 0;
+  background: #d7dfeb;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  transition: .16s;
+}
+
+.switch span:before {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 3px;
+  top: 3px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: .16s;
+}
+
+.switch input:checked + span {
+  background: rgba(70, 211, 105, .28);
+  border-color: var(--green);
+}
+
+.switch input:checked + span:before {
+  left: 25px;
+  background: var(--green);
+}
+
+.account-form-drawer {
+  position: fixed;
+  right: 12px;
+  top: 74px;
+  width: min(420px, calc(100vw - 24px));
+  z-index: 1400;
+  display: none;
+}
+
+.account-form-drawer .filter-grid {
+  margin-top: .5rem;
+}
+
+.password-field {
+  width: 100%;
+  min-width: 0;
+}
+
+.password-field-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.password-field-wrap input {
+  width: 100%;
+  display: block;
+  padding-right: 54px;
+  box-sizing: border-box;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: #6b7c93;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.password-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.password-field-row {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+}
+
+.password-field-row input {
+  flex: 1 1 auto;
+}
+
+.ai-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1300;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .22);
+}
+
+.ai-fab svg {
+  width: 28px;
+  height: 28px;
+}
+
+.ai-backdrop {
+  z-index: 1200;
+}
+
+.ai-drawer {
+  position: fixed;
+  right: 18px;
+  bottom: 88px;
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(78vh, 760px);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  z-index: 1250;
+  display: none;
+  overflow: hidden;
+}
+
+.ai-drawer.open {
+  display: block;
+}
+
+.chat-wrap {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+@media (max-width: 1100px) {
+  .admin-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-form-drawer {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  .ai-drawer {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}

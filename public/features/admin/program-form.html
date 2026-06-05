@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Registration Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  --accent:#2563eb;
+  --accent-light:#dbeafe;
+  --bg:#f0f4ff;
+  --card:#ffffff;
+  --border:#dbe4f0;
+  --text:#0f172a;
+  --muted:#64748b;
+  --serif:'DM Serif Display',Georgia,serif;
+  --sans:'DM Sans',Arial,sans-serif;
+  --program-form-scale:.78;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  padding:0;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+.dashboard{
+  width:100%;
+  margin:0;
+  background:#ffffff;
+  border:1px solid var(--border);
+  border-radius:0;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(15,23,42,.09);
+  transform:scale(var(--program-form-scale));
+  transform-origin:top center;
+}
+
+@supports (zoom:1){
+  .dashboard{
+    width:100%;
+    transform:none;
+    zoom:var(--program-form-scale);
+  }
+}
+
+.topbar{
+  background:#e8f3f7;
+  padding:8px 12px;
+  display:grid;
+  grid-template-columns:auto minmax(280px,1fr) auto;
+  align-items:center;
+  gap:10px;
+  border-bottom:1px solid var(--border);
+}
+
+.tabs{
+  display:flex;
+  gap:4px;
+  background:#d2e8ee;
+  padding:5px;
+  border-radius:12px;
+  overflow-x:auto;
+  flex-shrink:0;
+  scrollbar-width:none;
+}
+.tabs::-webkit-scrollbar{display:none;}
+
+.tab-btn{
+  border:0;
+  background:transparent;
+  padding:clamp(8px,1.2vw,11px) clamp(14px,2vw,22px);
+  border-radius:9px;
+  font-size:clamp(13px,1.4vw,15px);
+  font-weight:800;
+  cursor:pointer;
+  white-space:nowrap;
+  font-family:var(--sans);
+  color:var(--muted);
+  transition:all .18s;
+}
+.tab-btn.active{background:#ccc8c8;color:var(--text);}
+.tab-btn:hover:not(.active){background:rgba(0,0,0,.06);}
+
+.save-btn{
+  border:0;
+  background:var(--accent);
+  color:#fff;
+  border-radius:10px;
+  font-size:clamp(13px,1.4vw,15px);
+  font-weight:800;
+  cursor:pointer;
+  padding:clamp(9px,1.2vw,12px) clamp(14px,2vw,20px);
+  font-family:var(--sans);
+  white-space:nowrap;
+  box-shadow:0 6px 20px rgba(37,99,235,.28);
+}
+
+.page{
+  display:none;
+  padding:0;
+  background:var(--bg);
+  min-height:580px;
+}
+.page.active{display:block;}
+
+.grid-2,.form-builder-layout{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:clamp(14px,2vw,24px);
+  align-items:start;
+}
+
+.card{
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:clamp(14px,1.8vw,20px);
+  overflow:hidden;
+  box-shadow:0 8px 28px rgba(15,23,42,.06);
+}
+
+.card-header{
+  padding:clamp(12px,1.5vw,16px) clamp(16px,2vw,22px);
+  background:#f1f5ff;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.step{
+  width:clamp(24px,3vw,30px);
+  height:clamp(24px,3vw,30px);
+  border-radius:50%;
+  background:var(--accent);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font-weight:900;
+  font-size:clamp(11px,1.2vw,14px);
+  flex-shrink:0;
+}
+
+.card-header h2{
+  font-size:clamp(11px,1.3vw,15px);
+  letter-spacing:.8px;
+  text-transform:uppercase;
+  font-weight:800;
+}
+
+.card-body{padding:clamp(16px,2vw,24px);}
+
+.form-area{
+  display:flex;
+  flex-direction:column;
+  gap:clamp(12px,1.5vw,16px);
+}
+
+.field label,.form-group label{
+  display:block;
+  margin-bottom:6px;
+  font-size:clamp(10px,1.1vw,12px);
+  font-weight:800;
+  color:#475569;
+  text-transform:uppercase;
+  letter-spacing:.7px;
+}
+
+.field label .req{color:#dc2626;}
+.field label .opt{color:#94a3b8;font-size:11px;text-transform:none;letter-spacing:0;}
+
+.field input,.field select,.field textarea,.input-box{
+  width:100%;
+  min-height:clamp(38px,4.5vw,44px);
+  border:1.5px solid var(--border);
+  border-radius:10px;
+  padding:clamp(8px,1vw,11px) clamp(12px,1.5vw,15px);
+  font-size:clamp(13px,1.4vw,15px);
+  outline:none;
+  background:#fff;
+  font-family:var(--sans);
+  transition:border-color .18s;
+}
+.field input:focus,.field select:focus,.field textarea:focus,.input-box:focus{border-color:var(--accent);}
+
+.field textarea,textarea.input-box{min-height:82px;resize:vertical;}
+
+.checkbox-box{
+  background:#dbeafe;
+  border:1.5px solid #bfdbfe;
+  border-radius:14px;
+  padding:clamp(12px,1.5vw,16px);
+  display:flex;
+  gap:10px;
+  font-size:clamp(13px,1.4vw,15px);
+  line-height:1.7;
+}
+
+.submit-btn,.primary-btn{
+  width:100%;
+  min-height:clamp(44px,5vw,50px);
+  border:0;
+  background:var(--accent);
+  color:#fff;
+  border-radius:999px;
+  font-size:clamp(13px,1.5vw,16px);
+  font-weight:900;
+  cursor:pointer;
+  font-family:var(--sans);
+  box-shadow:0 10px 24px rgba(37,99,235,.26);
+}
+
+.section-note{
+  font-size:clamp(11px,1.2vw,13px);
+  color:#64748b;
+  line-height:1.6;
+  margin-bottom:clamp(10px,1.2vw,14px);
+}
+
+.form-grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:clamp(10px,1.5vw,14px);
+}
+.form-group.full{grid-column:1/-1;}
+
+.publish-box{
+  min-width:0;
+}
+
+.publish-row{
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  gap:8px;
+  align-items:center;
+}
+
+.publish-btn,.copy-btn{
+  border:0;
+  border-radius:9px;
+  padding:0 14px;
+  min-height:41px;
+  font-weight:900;
+  cursor:pointer;
+  font-family:var(--sans);
+  font-size:13px;
+  white-space:nowrap;
+}
+.publish-btn{background:var(--accent);color:#fff;}
+.copy-btn{background:#e0f2fe;color:#0369a1;}
+
+body.public-registration{
+  background:#f6f8fb;
+  overflow:auto;
+}
+body.public-registration .dashboard{
+  width:min(100%,760px);
+  margin:0 auto;
+  border:0;
+  box-shadow:none;
+  transform:none;
+}
+@supports (zoom:1){
+  body.public-registration .dashboard{zoom:1;}
+}
+body.public-registration .topbar,
+body.public-registration .preview-landing-page,
+body.public-registration .back-btn{
+  display:none!important;
+}
+body.public-registration .page{
+  padding:20px;
+  min-height:100vh;
+  background:#f6f8fb;
+}
+body.public-registration .preview-form-page{
+  display:block;
+  max-width:680px;
+}
+body.public-registration .preview-form-page .card{
+  border-radius:14px;
+}
+
+.image-source-tabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  background:#f1f5f9;
+  border:1.5px solid var(--border);
+  border-radius:12px;
+  padding:4px;
+}
+.image-source-btn{
+  min-height:38px;border:0;border-radius:9px;background:transparent;
+  color:#64748b;font-weight:800;cursor:pointer;font-family:var(--sans);
+  font-size:clamp(12px,1.3vw,14px);
+}
+.image-source-btn.active{background:#fff;color:var(--accent);box-shadow:0 2px 8px rgba(15,23,42,.08);}
+
+.image-input-panel{display:none;margin-top:10px;}
+.image-input-panel.active{display:block;}
+
+.file-upload-box{
+  min-height:46px;border:1.5px dashed #93c5fd;border-radius:12px;
+  background:#eff6ff;color:var(--accent);display:flex;align-items:center;
+  justify-content:center;font-weight:900;cursor:pointer;
+  font-size:clamp(12px,1.3vw,14px);font-family:var(--sans);
+}
+
+.clear-image-btn{
+  margin-top:10px;border:0;border-radius:10px;
+  padding:clamp(8px,1vw,11px) 14px;background:#fee2e2;color:#dc2626;
+  font-weight:900;cursor:pointer;font-family:var(--sans);
+  font-size:clamp(12px,1.3vw,14px);
+}
+
+.event-image-box{
+  width:100%;height:clamp(180px,22vw,275px);border:2px dashed #cbd5e1;
+  border-radius:16px;background:#f8fafc;display:flex;align-items:center;
+  justify-content:center;overflow:hidden;color:#64748b;
+}
+.event-image-box img{width:100%;height:100%;object-fit:contain;background:#f8fafc;}
+
+.field-top{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  gap:12px;margin-bottom:clamp(12px,1.5vw,16px);flex-wrap:wrap;
+}
+.field-top h2{font-size:clamp(14px,1.6vw,16px);font-weight:800;}
+
+.add-btn,.small-btn{
+  border:0;background:var(--accent);color:#fff;border-radius:10px;
+  font-weight:800;cursor:pointer;font-family:var(--sans);
+}
+.add-btn{
+  padding:clamp(8px,1vw,10px) clamp(12px,1.5vw,15px);
+  font-size:clamp(12px,1.3vw,13px);white-space:nowrap;
+}
+
+.field-list{
+  display:flex;flex-direction:column;gap:clamp(8px,1vw,11px);
+  max-height:600px;overflow-y:auto;scrollbar-width:thin;
+}
+
+.field-item{
+  display:grid;grid-template-columns:24px 1fr auto;gap:10px;
+  align-items:center;background:#f8fbff;border:1px solid var(--border);
+  border-radius:12px;padding:clamp(10px,1.2vw,13px);
+}
+
+.drag-icon{color:#94a3b8;font-size:18px;font-weight:900;}
+
+.field-info strong{display:block;font-size:clamp(13px,1.4vw,14px);margin-bottom:4px;}
+.field-key{display:block;font-size:11px;color:#94a3b8;font-family:monospace;}
+.badge-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:4px;}
+.badge{font-size:clamp(10px,1vw,11px);font-weight:800;padding:3px 8px;border-radius:999px;background:#dbeafe;color:var(--accent);}
+.badge.required{background:#fee2e2;color:#dc2626;}
+.badge.optional{background:#f1f5f9;color:#64748b;}
+.field-actions{display:flex;gap:5px;}
+
+.icon-btn{
+  width:clamp(28px,3vw,32px);height:clamp(28px,3vw,32px);
+  border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;
+  background:white;font-weight:800;font-size:13px;
+}
+.edit{color:#f59e0b;background:#fffbeb;}
+.delete{color:#ef4444;background:#fff1f2;}
+
+.db-box{
+  background:#f8fafc;border:1px solid var(--border);border-radius:14px;
+  padding:clamp(12px,1.5vw,16px);margin-bottom:clamp(10px,1.3vw,14px);
+}
+.db-box h3{font-size:clamp(13px,1.4vw,15px);font-weight:700;margin-bottom:10px;}
+
+.url-row{display:grid;grid-template-columns:1fr auto;gap:10px;}
+
+.small-btn{
+  padding:0 clamp(14px,1.8vw,20px);
+  min-height:clamp(38px,4vw,44px);
+  font-size:clamp(12px,1.3vw,14px);
+}
+
+.current-settings{
+  background:#f8fafc;border:1px solid var(--border);border-radius:14px;
+  padding:clamp(14px,1.8vw,18px);display:grid;gap:10px;
+  font-size:clamp(12px,1.3vw,14px);
+}
+.current-settings b{color:var(--accent);word-break:break-all;}
+
+/* ══════════════════════════════
+   HOME PREVIEW CARD
+   Uses cqi (container query inline units) so all sizing
+   is relative to the card's own width at every screen size.
+══════════════════════════════ */
+
+.home-preview-scale{
+  width:min(100%,980px);
+  margin:0 auto;
+  container-type:inline-size;
+  container-name:preview-root;
+}
+
+.home-card-preview{
+  width:100%;
+  aspect-ratio:1.64/1;
+  background:#fff;
+  border-radius:clamp(16px,2vw,26px);
+  border:1px solid var(--border);
+  overflow:hidden;
+  display:grid;
+  grid-template-columns:1.1fr .9fr;
+  box-shadow:0 16px 50px rgba(15,23,42,.12);
+  container-type:inline-size;
+  container-name:card;
+}
+
+.home-left-panel{
+  background:#eef2ff;
+  border-right:1px solid var(--border);
+  padding:2.2cqi 2.4cqi;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:1.3cqi;
+  min-width:0;
+  overflow:hidden;
+}
+
+.pc-header{
+  display:flex;
+  align-items:center;
+  gap:1.2cqi;
+  flex-shrink:0;
+}
+
+.pc-logo{
+  width:5.2cqi;height:5.2cqi;
+  min-width:24px;min-height:24px;
+  border-radius:50%;
+  background:var(--accent-light);
+  color:var(--accent);
+  display:grid;place-items:center;
+  font-weight:900;font-size:2.2cqi;
+  flex-shrink:0;
+}
+
+.pc-divider{
+  width:1px;height:4.8cqi;min-height:24px;
+  background:var(--border);flex-shrink:0;
+}
+
+.pc-org-name{
+  font-family:var(--serif);
+  font-size:clamp(11px,2.1cqi,22px);
+  font-weight:900;color:var(--accent);
+  line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+.pc-org-sub{
+  font-size:clamp(7px,1.1cqi,11px);color:#94a3b8;line-height:1.3;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+
+.divider-h{width:100%;height:1px;background:var(--border);flex-shrink:0;}
+
+.pc-event-title{
+  font-family:var(--serif);
+  font-size:clamp(18px,4cqi,42px);
+  font-weight:900;line-height:1.05;text-align:center;flex-shrink:0;
+}
+.pc-event-title span{color:var(--accent);font-style:italic;display:block;}
+
+.home-event-sub{
+  font-size:clamp(9px,1.35cqi,14px);color:#475569;line-height:1.45;
+  text-align:center;overflow:hidden;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+
+.info-row{
+  width:100%;background:#fff;border:1px solid var(--border);
+  border-radius:clamp(8px,1.5cqi,16px);display:flex;overflow:hidden;flex-shrink:0;
+}
+.info-item{flex:1;padding:clamp(5px,1.1cqi,11px);text-align:center;}
+.info-item+.info-item{border-left:1px solid var(--border);}
+
+.info-item-label{
+  font-size:clamp(6px,.85cqi,10px);font-weight:800;color:#94a3b8;
+  text-transform:uppercase;letter-spacing:1.2px;display:block;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+.info-item-value{
+  font-size:clamp(9px,1.35cqi,15px);font-weight:900;color:#0f172a;display:block;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+.countdown-section{flex-shrink:0;width:100%;}
+
+.countdown-heading{
+  font-size:clamp(8px,1.2cqi,13px);font-weight:700;color:#475569;
+  text-align:center;margin-bottom:.6cqi;
+}
+
+.countdown-grid{
+  display:flex;gap:.6cqi;justify-content:center;align-items:center;
+}
+
+.cd-box{
+  flex:1;background:#fff;border:1px solid var(--border);
+  border-radius:clamp(7px,1.3cqi,14px);overflow:hidden;text-align:center;
+}
+.cd-top{background:#eef2ff;padding:.8cqi .4cqi;}
+.cd-bottom{padding:.6cqi .4cqi;}
+
+.cd-num{
+  font-size:clamp(14px,3.2cqi,34px);font-weight:900;
+  color:var(--accent);line-height:1;
+}
+
+.cd-label{
+  font-size:clamp(6px,.82cqi,9px);font-weight:800;color:#94a3b8;
+  text-transform:uppercase;letter-spacing:.5px;
+}
+
+.cd-sep{
+  color:#94a3b8;font-size:clamp(10px,1.5cqi,18px);font-weight:900;flex-shrink:0;
+}
+
+.hotline-card{
+  width:100%;background:#fff;border:1px solid var(--border);
+  border-radius:clamp(8px,1.5cqi,16px);display:flex;align-items:center;
+  overflow:hidden;flex-shrink:0;
+}
+
+.hotline-icon-col{background:var(--accent-light);padding:.9cqi;flex-shrink:0;}
+
+.hotline-icon-wrap{
+  width:clamp(22px,3.2cqi,36px);height:clamp(22px,3.2cqi,36px);
+  background:var(--accent);color:white;border-radius:50%;
+  display:grid;place-items:center;font-size:clamp(10px,1.5cqi,16px);
+}
+
+.hotline-mid{flex:1;padding:.7cqi;min-width:0;}
+.hotline-mid strong{font-size:clamp(8px,1.1cqi,13px);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hotline-mid small{font-size:clamp(7px,.95cqi,11px);color:#94a3b8;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+.hotline-right{padding:.7cqi;text-align:right;flex-shrink:0;}
+.hotline-right-num{font-size:clamp(9px,1.3cqi,15px);font-weight:900;color:var(--accent);white-space:nowrap;}
+.hotline-right-hours{
+  font-size:clamp(6px,.78cqi,9px);color:#fff;background:var(--accent);
+  padding:2px 6px;border-radius:99px;white-space:nowrap;display:inline-block;margin-top:2px;
+}
+
+.home-right-panel{
+  background:#fff;padding:2.2cqi 2.4cqi;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1.6cqi;min-width:0;overflow:hidden;
+}
+
+.ecard-image{
+  width:min(78%,300px);aspect-ratio:.79/1;
+  border-radius:clamp(10px,2cqi,22px);border:1px solid var(--border);
+  background:#f8fafc;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;color:#64748b;box-shadow:0 8px 28px rgba(15,23,42,.12);
+  font-size:clamp(10px,1.4cqi,14px);
+}
+.ecard-image img{width:100%;height:100%;object-fit:contain;background:#f8fafc;}
+
+.join-header{text-align:center;}
+.join-header h2{font-family:var(--serif);font-size:clamp(14px,2.8cqi,30px);font-weight:900;line-height:1.1;}
+.join-header p{font-size:clamp(9px,1.3cqi,14px);color:#64748b;margin-top:.3cqi;}
+
+.cta-btn{
+  width:min(82%,280px);border:0;border-radius:999px;
+  padding:clamp(9px,1.5cqi,16px);background:var(--accent);color:#fff;
+  font-size:clamp(11px,1.6cqi,17px);font-weight:900;cursor:pointer;font-family:var(--sans);
+  box-shadow:0 8px 24px rgba(37,99,235,.30);
+}
+
+/* stack card on narrow containers */
+@container card (max-width:500px){
+  .home-card-preview{
+    grid-template-columns:1fr !important;
+    aspect-ratio:auto !important;
+  }
+  .home-left-panel{
+    border-right:none;border-bottom:1px solid var(--border);
+    padding:5cqi 6cqi;gap:3cqi;
+  }
+  .home-right-panel{padding:5cqi 6cqi;gap:4cqi;}
+  .hotline-right{display:none;}
+}
+
+.preview-form-page{display:none;max-width:680px;margin:auto;}
+.preview-form-page.show{display:block;}
+.preview-landing-page.hide{display:none;}
+
+.back-btn{
+  border:0;background:#64748b;color:#fff;
+  padding:clamp(8px,1.2vw,11px) clamp(14px,2vw,18px);
+  border-radius:10px;font-weight:800;cursor:pointer;font-family:var(--sans);
+  font-size:clamp(12px,1.3vw,14px);margin-bottom:clamp(10px,1.5vw,14px);
+}
+
+.modal-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);
+  z-index:99;align-items:center;justify-content:center;padding:18px;
+}
+.modal{
+  width:min(100%,560px);background:#fff;border-radius:20px;
+  padding:clamp(16px,2.5vw,24px);max-height:90vh;overflow-y:auto;
+}
+.modal h3{margin-bottom:16px;font-size:clamp(18px,2.2vw,22px);font-family:var(--serif);}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.modal-group.full{grid-column:1/-1;}
+.modal-group label{display:block;font-size:12px;font-weight:800;color:#475569;margin-bottom:6px;}
+.modal-group input,.modal-group select,.modal-group textarea{
+  width:100%;height:42px;border:1.5px solid var(--border);
+  border-radius:10px;padding:0 12px;font-family:var(--sans);font-size:14px;
+}
+.modal-group textarea{height:70px;padding-top:10px;}
+.required-row{display:flex;gap:8px;align-items:center;font-size:14px;font-weight:700;color:#475569;margin-top:24px;}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+.cancel-btn,.modal-save-btn{border:0;border-radius:10px;padding:10px 18px;font-weight:800;cursor:pointer;font-family:var(--sans);}
+.cancel-btn{background:#f1f5f9;color:#475569;}
+.modal-save-btn{background:var(--accent);color:#fff;}
+
+/* ── RESPONSIVE BREAKPOINTS ── */
+@media(max-width:900px){
+  .grid-2,.form-builder-layout{grid-template-columns:1fr;}
+  .topbar{grid-template-columns:1fr auto;}
+  .publish-box{grid-column:1/-1;}
+}
+
+@media(max-width:600px){
+  body{padding:0;}
+  .topbar{align-items:stretch;gap:8px;}
+  .tabs{width:100%;}
+  .save-btn{width:100%;text-align:center;}
+  .publish-box,.save-btn{grid-column:1/-1;}
+  .publish-row{grid-template-columns:1fr;gap:8px;}
+  .publish-btn,.copy-btn{min-height:42px;}
+  .form-grid,.modal-grid{grid-template-columns:1fr;}
+  .form-group.full,.modal-group.full{grid-column:1/-1;}
+  .field-item{grid-template-columns:24px 1fr;grid-template-rows:auto auto;}
+  .field-actions{grid-column:1/-1;justify-content:flex-end;}
+  .url-row{grid-template-columns:1fr;}
+  .small-btn{min-height:42px;width:100%;}
+  .home-card-preview{aspect-ratio:auto;grid-template-columns:1fr;}
+  .home-left-panel{border-right:none;border-bottom:1px solid var(--border);}
+  .hotline-right{display:none;}
+}
+
+@media(max-width:380px){
+  .tab-btn{padding:8px 10px;font-size:12px;}
+  .cd-sep{display:none;}
+}
+</style>
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="topbar">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="openPage('preview',this)">Preview</button>
+      <button class="tab-btn" onclick="openPage('form',this)">Form</button>
+      <button class="tab-btn" onclick="openPage('event',this)">Event</button>
+      <button class="tab-btn" onclick="openPage('database',this)">Database</button>
+    </div>
+    <div class="publish-box">
+      <div class="publish-row">
+        <input class="input-box" id="publishedFormUrl" type="text" placeholder="Publish করলে এখানে form URL তৈরি হবে" readonly />
+        <button class="publish-btn" type="button" onclick="publishForm()">&#x1F680; Publish</button>
+        <button class="copy-btn" type="button" onclick="copyFormUrl()">&#x1F4CB; Copy</button>
+      </div>
+    </div>
+    <button class="save-btn" onclick="saveAllSettings()">&#x2705; Save All</button>
+  </div>
+
+  <section class="page active" id="page-preview">
+    <div class="preview-landing-page" id="previewLandingPage">
+      <div class="home-preview-scale">
+        <div class="home-card-preview">
+
+          <section class="home-left-panel">
+            <div class="pc-header">
+              <div class="pc-logo">Q</div>
+              <div class="pc-divider"></div>
+              <div style="min-width:0;">
+                <div class="pc-org-name">Quantum Foundation</div>
+                <div class="pc-org-sub">The Science of Living. The Power of Transformation.</div>
+              </div>
+            </div>
+
+            <div class="divider-h"></div>
+
+            <h1 class="pc-event-title">
+              <span id="homeTitleLine1" style="color:#0f172a;font-style:normal;">Quantum Method</span>
+              <span id="homeTitleLine2">Orientation</span>
+            </h1>
+
+            <p class="home-event-sub" id="homeDescription">Transform your journey with our comprehensive orientation designed for excellence.</p>
+
+            <div class="info-row">
+              <div class="info-item">
+                <span class="info-item-label">Date</span>
+                <span class="info-item-value" id="homeDate">10 June 2026</span>
+              </div>
+              <div class="info-item">
+                <span class="info-item-label">Time</span>
+                <span class="info-item-value" id="homeTime">5:00 PM &#x2013; 8:00 PM</span>
+              </div>
+            </div>
+
+            <div class="info-row">
+              <div class="info-item">
+                <span class="info-item-label">Venue</span>
+                <span class="info-item-value" id="homeVenue">IDEB, কাকরাইল, ঢাকা</span>
+              </div>
+            </div>
+
+            <div class="countdown-section">
+              <div class="countdown-heading">&#x2022; Event Starts In &#x2022;</div>
+              <div class="countdown-grid">
+                <div class="cd-box">
+                  <div class="cd-top"><span class="cd-num" id="countDays">05</span></div>
+                  <div class="cd-bottom"><span class="cd-label">Days</span></div>
+                </div>
+                <span class="cd-sep">:</span>
+                <div class="cd-box">
+                  <div class="cd-top"><span class="cd-num" id="countHours">15</span></div>
+                  <div class="cd-bottom"><span class="cd-label">Hrs</span></div>
+                </div>
+                <span class="cd-sep">:</span>
+                <div class="cd-box">
+                  <div class="cd-top"><span class="cd-num" id="countMinutes">29</span></div>
+                  <div class="cd-bottom"><span class="cd-label">Min</span></div>
+                </div>
+                <span class="cd-sep">:</span>
+                <div class="cd-box">
+                  <div class="cd-top"><span class="cd-num" id="countSeconds">24</span></div>
+                  <div class="cd-bottom"><span class="cd-label">Sec</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="hotline-card">
+              <div class="hotline-icon-col"><div class="hotline-icon-wrap">&#x1F4DE;</div></div>
+              <div class="hotline-mid">
+                <strong>Need Help? We're Here...</strong>
+                <small>যেকোনো তথ্য বা সহায়তার জন্য যোগাযোগ করুন</small>
+              </div>
+              <div class="hotline-right">
+                <div class="hotline-right-num">+8801335-138633</div>
+                <span class="hotline-right-hours">9 AM &#x2013; 9 PM</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="home-right-panel">
+            <div class="ecard-image" id="homeImageBox">Event Image</div>
+            <div class="join-header">
+              <h2>রেজিস্ট্রেশন করুন</h2>
+              <p>নতুন associate হিসেবে যোগ দিন</p>
+            </div>
+            <button class="cta-btn" onclick="showPreviewForm()" type="button">&#x2736; New Registration &#x2192;</button>
+          </section>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="preview-form-page" id="previewFormPage">
+      <button class="back-btn" onclick="showPreviewLanding()" type="button">&#x2190; Back to Home Preview</button>
+      <div class="card">
+        <div class="card-header"><span class="step">1</span><h2>Personal Details</h2></div>
+        <div class="card-body">
+          <form>
+            <div class="form-area" id="finalFormPreview"></div>
+            <button class="submit-btn" style="margin-top:16px;" type="button">&#x2713; Complete Registration</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-form">
+    <div class="form-builder-layout">
+      <div class="card">
+        <div class="card-header"><span class="step">1</span><h2>Registration Form Preview</h2></div>
+        <div class="card-body">
+          <form id="dynamicForm">
+            <div class="form-area" id="formPreview"></div>
+            <button class="submit-btn" style="margin-top:16px;" type="submit">&#x2713; Complete Registration</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="step">&#x2699;</span><h2>Form Field Settings</h2></div>
+        <div class="card-body">
+          <div class="field-top">
+            <div>
+              <h2>Registration Form Fields</h2>
+              <p class="section-note">Field add, edit, delete, required এবং order control করুন।</p>
+            </div>
+            <button class="add-btn" type="button" onclick="openAddModal()">+ Field যোগ করুন</button>
+          </div>
+          <div class="field-list" id="fieldList"></div>
+          <button class="primary-btn" style="margin-top:16px;" type="button" onclick="saveFields()">&#x2705; Fields সংরক্ষণ করুন</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-event">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="step">E</span><h2>Event Settings</h2></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Event Title Line 1</label>
+              <input class="input-box" id="eventTitleLine1" type="text" value="Quantum Method" oninput="renderEventPreview()" />
+            </div>
+            <div class="form-group">
+              <label>Event Title Line 2</label>
+              <input class="input-box" id="eventTitleLine2" type="text" value="Orientation" oninput="renderEventPreview()" />
+            </div>
+            <div class="form-group">
+              <label>Event Date</label>
+              <input class="input-box" id="eventDate" type="date" oninput="renderEventPreview()" />
+            </div>
+            <div class="form-group">
+              <label>Display Date</label>
+              <input class="input-box" id="displayDate" type="text" value="10 June 2026" oninput="renderEventPreview()" />
+            </div>
+            <div class="form-group">
+              <label>Event Time</label>
+              <input class="input-box" id="eventTime" type="time" oninput="renderEventPreview()" />
+            </div>
+            <div class="form-group">
+              <label>Display Time</label>
+              <input class="input-box" id="displayTime" type="text" value="5:00 PM - 8:00 PM" oninput="renderEventPreview()" />
+            </div>
+            <div class="form-group full">
+              <label>Venue</label>
+              <input class="input-box" id="eventVenue" type="text" value="ঢাকার ভেতরে: IDEB, কাকরাইল — আর ঢাকার বাইরে: লাইভ স্ট্রিমিং" oninput="renderEventPreview()" />
+            </div>
+            <div class="form-group full">
+              <label>E-Card Image</label>
+              <div class="image-source-tabs">
+                <button class="image-source-btn active" id="uploadTabBtn" type="button" onclick="switchImageSource('upload')">&#x1F4C1; ফাইল আপলোড</button>
+                <button class="image-source-btn" id="urlTabBtn" type="button" onclick="switchImageSource('url')">&#x1F517; URL / Path</button>
+              </div>
+              <div class="image-input-panel active" id="uploadPanel">
+                <input id="eventImageFile" type="file" accept="image/*" hidden onchange="useLocalImage(event)" />
+                <label class="file-upload-box" for="eventImageFile">&#x1F4C1; Local Folder থেকে Image Choose করুন</label>
+              </div>
+              <div class="image-input-panel" id="urlPanel">
+                <input class="input-box" id="eventImageUrl" type="text" placeholder="https://example.com/poster.jpg" oninput="useUrlImage()" />
+              </div>
+              <button class="clear-image-btn" type="button" onclick="clearEventImage()">&#x1F5D1; Image Clear</button>
+            </div>
+            <div class="form-group full">
+              <label>Event Description</label>
+              <textarea class="input-box" id="eventDescription" oninput="renderEventPreview()">Transform your journey with our comprehensive orientation designed for excellence.</textarea>
+            </div>
+          </div>
+          <button class="primary-btn" style="margin-top:16px;" onclick="saveEventSettings()" type="button">&#x2705; Event Save</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="step">&#x1F441;</span><h2>Event Preview</h2></div>
+        <div class="card-body">
+          <div class="event-image-box" id="eventImageBox">Event Image Preview</div>
+          <div style="margin-top:16px;line-height:1.8;">
+            <h2 style="font-family:'DM Serif Display',Georgia,serif;font-size:clamp(16px,2vw,22px);">
+              <span id="eventPreviewTitle1">Quantum Method</span>
+              <span id="eventPreviewTitle2" style="color:#2563eb;font-style:italic;"> Orientation</span>
+            </h2>
+            <p style="font-size:clamp(13px,1.4vw,15px);"><b>Date:</b> <span id="eventPreviewDate">10 June 2026</span></p>
+            <p style="font-size:clamp(13px,1.4vw,15px);"><b>Time:</b> <span id="eventPreviewTime">5:00 PM - 8:00 PM</span></p>
+            <p style="font-size:clamp(13px,1.4vw,15px);"><b>Venue:</b> <span id="eventPreviewVenue">ঢাকা কেন্দ্র</span></p>
+            <p id="eventPreviewDescription" style="font-size:clamp(12px,1.3vw,14px);color:#475569;margin-top:6px;">Transform your journey with our comprehensive orientation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-database">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="step">D</span><h2>Google Sheet API Connection</h2></div>
+        <div class="card-body">
+          <div class="db-box">
+            <h3>Google Sheet ID</h3>
+            <div class="url-row">
+              <input class="input-box" id="sheetId" type="text" placeholder="Spreadsheet ID লিখুন" />
+              <button class="small-btn" onclick="saveDatabaseSettings()">Save</button>
+            </div>
+          </div>
+          <div class="db-box">
+            <h3>Google Sheet API Key</h3>
+            <div class="url-row">
+              <input class="input-box" id="sheetApiKey" type="text" placeholder="Google Cloud API Key" />
+              <button class="small-btn" onclick="saveDatabaseSettings()">Save</button>
+            </div>
+          </div>
+          <div class="db-box">
+            <h3>Sheet Name / Range</h3>
+            <div class="url-row">
+              <input class="input-box" id="sheetRange" type="text" value="Sheet1!A:Z" />
+              <button class="small-btn" onclick="saveDatabaseSettings()">Save</button>
+            </div>
+          </div>
+          <button class="primary-btn" onclick="saveDatabaseSettings()" type="button">&#x2705; Google Sheet API Save</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="step">&#x1F4CA;</span><h2>Current Sheet API Settings</h2></div>
+        <div class="card-body">
+          <div class="current-settings">
+            <p>Sheet ID: <b id="currentSheetId">সেট করা হয়নি</b></p>
+            <p>API Key: <b id="currentSheetApiKey">সেট করা হয়নি</b></p>
+            <p>Range: <b id="currentSheetRange">Sheet1!A:Z</b></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- FIELD MODAL -->
+<div class="modal-backdrop" id="fieldModal">
+  <div class="modal">
+    <h3 id="modalTitle">নতুন Field যোগ করুন</h3>
+    <div class="modal-grid">
+      <div class="modal-group"><label>Field Label</label><input id="fieldLabel" type="text" /></div>
+      <div class="modal-group"><label>Field Key</label><input id="fieldKey" type="text" /></div>
+      <div class="modal-group">
+        <label>Field Type</label>
+        <select id="fieldType" onchange="toggleOptionsBox()">
+          <option value="text">Text</option>
+          <option value="tel">Mobile / Tel</option>
+          <option value="email">Email</option>
+          <option value="date">Date</option>
+          <option value="number">Number</option>
+          <option value="select">Select</option>
+          <option value="textarea">Textarea</option>
+          <option value="checkbox">Checkbox</option>
+        </select>
+      </div>
+      <div class="modal-group"><label>Placeholder</label><input id="fieldPlaceholder" type="text" /></div>
+      <div class="modal-group full" id="optionsBox"><label>Select Options</label><textarea id="fieldOptions"></textarea></div>
+      <label class="required-row"><input id="fieldRequired" type="checkbox" /> Required Field</label>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel-btn" type="button" onclick="closeModal()">Cancel</button>
+      <button class="modal-save-btn" type="button" onclick="saveFieldFromModal()">Save Field</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let editingIndex=null,currentEventImage="",imageSourceType="upload";
+
+let fields=[
+  {label:"Full Name / পূর্ণ নাম",key:"full_name",type:"text",placeholder:"আপনার পূর্ণ নাম লিখুন",required:true,options:[]},
+  {label:"Mobile / মোবাইল",key:"mobile",type:"tel",placeholder:"01XXXXXXXXX",required:true,options:[]},
+  {label:"Email / ইমেইল",key:"email",type:"email",placeholder:"example@email.com",required:true,options:[]},
+  {label:"Location / এলাকা",key:"location",type:"text",placeholder:"আপনার এলাকা লিখুন",required:false,options:[]},
+  {label:"Occupation / পেশা",key:"occupation",type:"select",placeholder:"Occupation / পেশা নির্বাচন করুন",required:false,options:["Student","Teacher","Doctor","Engineer","Business","Other"]},
+  {label:"Payment Methods",key:"payment_method",type:"select",placeholder:"Payment Methods নির্বাচন করুন",required:true,options:["Bkash","Nagad","Rocket","Cash"]}
+];
+
+function openPage(pageName,button){
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
+  document.getElementById("page-"+pageName).classList.add("active");
+  button.classList.add("active");
+  if(pageName==="preview"){renderFinalPreview();showPreviewLanding();}
+}
+
+function isPublicRegistrationView(){
+  return window.location.pathname.replace(/\/+$/,"")==="/register" && new URLSearchParams(window.location.search).has("id");
+}
+
+function enterPublicRegistrationMode(){
+  document.body.classList.add("public-registration");
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.getElementById("page-preview").classList.add("active");
+  renderFinalPreview();
+  showPreviewForm();
+}
+
+function getAuthToken(){
+  try{
+    return localStorage.getItem("token") || parent.localStorage.getItem("token") || "";
+  }catch{
+    return localStorage.getItem("token") || "";
+  }
+}
+
+async function publishPage({pageName,realFilePath,pageType,inputId}){
+  const token=getAuthToken();
+  if(!token)throw new Error("Publish করতে আগে admin হিসেবে login করুন");
+  const headers={"Content-Type":"application/json"};
+  if(token)headers.Authorization="Bearer "+token;
+
+  const response=await fetch("/api/pages/publish",{
+    method:"POST",
+    headers,
+    body:JSON.stringify({
+      page_name:pageName,
+      real_file_path:realFilePath,
+      page_type:pageType
+    })
+  });
+  const text=await response.text();
+  let data={};
+  try{data=text?JSON.parse(text):{};}catch{throw new Error("Server থেকে valid publish response আসেনি. Server restart করুন.");}
+  if(!response.ok||data.ok===false)throw new Error(data.message||"Publish failed");
+
+  const publicUrl=data.public_url || (window.location.origin+"/register?id="+encodeURIComponent(data.page_id));
+  const input=document.getElementById(inputId);
+  if(input)input.value=publicUrl;
+  localStorage.setItem(inputId,publicUrl);
+  return data;
+}
+
+async function publishForm(){
+  const btn=document.querySelector(".publish-btn");
+  if(btn)btn.disabled=true;
+  try{
+    await publishPage({
+      pageName:"Registration Page",
+      realFilePath:"/features/admin/program-form.html",
+      pageType:"registration",
+      inputId:"publishedFormUrl"
+    });
+    alert("Page published successfully!");
+  }catch(error){
+    alert(error.message||"Publish failed");
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+document.addEventListener("click",async function(event){
+  const button=event.target.closest("[data-publish-page]");
+  if(!button)return;
+  const inputId=button.dataset.urlInput||"publishedFormUrl";
+  button.disabled=true;
+  try{
+    await publishPage({
+      pageName:button.dataset.pageName||"Published Page",
+      realFilePath:button.dataset.realFilePath||"",
+      pageType:button.dataset.pageType||"page",
+      inputId
+    });
+    alert("Page published successfully!");
+  }catch(error){
+    alert(error.message||"Publish failed");
+  }finally{
+    button.disabled=false;
+  }
+});
+
+async function copyFormUrl(){
+  const url=document.getElementById("publishedFormUrl").value;
+  if(!url){alert("আগে Publish করুন");return;}
+  try{
+    await navigator.clipboard.writeText(url);
+    alert("Form URL copied!");
+  }catch{
+    const input=document.getElementById("publishedFormUrl");
+    input.focus();
+    input.select();
+    document.execCommand("copy");
+    alert("Form URL copied!");
+  }
+}
+
+function renderFieldHTML(field){
+  const req=field.required?'<span class="req">*</span>':'<span class="opt">(optional)</span>';
+  if(field.type==="select")return`<div class="field"><label>${field.label} ${req}</label><select name="${field.key}" ${field.required?"required":""}><option value="">${field.placeholder||"নির্বাচন করুন"}</option>${field.options.map(o=>`<option value="${o}">${o}</option>`).join("")}</select></div>`;
+  if(field.type==="textarea")return`<div class="field"><label>${field.label} ${req}</label><textarea name="${field.key}" placeholder="${field.placeholder}" ${field.required?"required":""}></textarea></div>`;
+  if(field.type==="checkbox")return`<label class="checkbox-box"><input type="checkbox" name="${field.key}" ${field.required?"required":""}/><span>${field.label} ${field.required?"*":""}</span></label>`;
+  return`<div class="field"><label>${field.label} ${req}</label><input type="${field.type}" name="${field.key}" placeholder="${field.placeholder}" ${field.required?"required":""}/></div>`;
+}
+
+function renderPreview(){document.getElementById("formPreview").innerHTML=fields.map(renderFieldHTML).join("");}
+
+function renderFieldList(){
+  document.getElementById("fieldList").innerHTML=fields.map((f,i)=>`
+    <div class="field-item">
+      <div class="drag-icon">&#x2637;</div>
+      <div class="field-info">
+        <strong>${f.label}</strong>
+        <div class="badge-row">
+          <span class="badge">${f.type}</span>
+          <span class="badge ${f.required?"required":"optional"}">${f.required?"required":"optional"}</span>
+        </div>
+        <span class="field-key">${f.key}</span>
+      </div>
+      <div class="field-actions">
+        <button class="icon-btn" onclick="moveField(${i},-1)">&#x2191;</button>
+        <button class="icon-btn" onclick="moveField(${i},1)">&#x2193;</button>
+        <button class="icon-btn edit" onclick="openEditModal(${i})">&#x270E;</button>
+        <button class="icon-btn delete" onclick="deleteField(${i})">&#x1F5D1;</button>
+      </div>
+    </div>`).join("");
+}
+
+function switchImageSource(type){
+  imageSourceType=type;
+  document.getElementById("uploadTabBtn").classList.toggle("active",type==="upload");
+  document.getElementById("urlTabBtn").classList.toggle("active",type==="url");
+  document.getElementById("uploadPanel").classList.toggle("active",type==="upload");
+  document.getElementById("urlPanel").classList.toggle("active",type==="url");
+}
+
+function setImagePreview(targetId,src,emptyText){
+  const box=document.getElementById(targetId);
+  box.innerHTML=src?`<img src="${src}" alt="Event Image" />`:emptyText;
+}
+
+function useUrlImage(){
+  const url=document.getElementById("eventImageUrl").value.trim();
+  if(url){imageSourceType="url";currentEventImage=url;localStorage.setItem("dashboard_event_image",currentEventImage);}
+  renderEventPreview();
+}
+
+function useLocalImage(event){
+  const file=event.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    imageSourceType="upload";currentEventImage=e.target.result;
+    document.getElementById("eventImageUrl").value="";
+    localStorage.setItem("dashboard_event_image",currentEventImage);
+    renderEventPreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearEventImage(){
+  currentEventImage="";
+  document.getElementById("eventImageUrl").value="";
+  document.getElementById("eventImageFile").value="";
+  localStorage.removeItem("dashboard_event_image");
+  renderEventPreview();
+}
+
+function getActiveImage(){
+  const url=document.getElementById("eventImageUrl").value.trim();
+  return imageSourceType==="url"?(url||currentEventImage):(currentEventImage||url);
+}
+
+function renderEventPreview(){
+  const title1=document.getElementById("eventTitleLine1").value||"Quantum Method";
+  const title2=document.getElementById("eventTitleLine2").value||"Orientation";
+  const date=document.getElementById("displayDate").value||"10 June 2026";
+  const time=document.getElementById("displayTime").value||"5:00 PM - 8:00 PM";
+  const venue=document.getElementById("eventVenue").value||"-";
+  const desc=document.getElementById("eventDescription").value||"-";
+  const image=getActiveImage();
+  document.getElementById("eventPreviewTitle1").innerText=title1+" ";
+  document.getElementById("eventPreviewTitle2").innerText=title2;
+  document.getElementById("eventPreviewDate").innerText=date;
+  document.getElementById("eventPreviewTime").innerText=time;
+  document.getElementById("eventPreviewVenue").innerText=venue;
+  document.getElementById("eventPreviewDescription").innerText=desc;
+  setImagePreview("eventImageBox",image,"Event Image Preview");
+}
+
+function renderFinalPreview(){
+  const title1=document.getElementById("eventTitleLine1").value||"Quantum Method";
+  const title2=document.getElementById("eventTitleLine2").value||"Orientation";
+  const date=document.getElementById("displayDate").value||"10 June 2026";
+  const time=document.getElementById("displayTime").value||"5:00 PM - 8:00 PM";
+  const venue=document.getElementById("eventVenue").value||"-";
+  const desc=document.getElementById("eventDescription").value||"-";
+  const image=getActiveImage();
+  document.getElementById("homeTitleLine1").innerText=title1;
+  document.getElementById("homeTitleLine2").innerText=title2;
+  document.getElementById("homeDate").innerText=date;
+  document.getElementById("homeTime").innerText=time;
+  document.getElementById("homeVenue").innerText=venue;
+  document.getElementById("homeDescription").innerText=desc;
+  document.getElementById("finalFormPreview").innerHTML=fields.map(renderFieldHTML).join("");
+  setImagePreview("homeImageBox",image,"Event Image");
+  updateCountdown();
+}
+
+function updateCountdown(){
+  const dateValue=document.getElementById("eventDate").value;
+  const timeValue=document.getElementById("eventTime").value;
+  if(!dateValue||!timeValue)return;
+  const target=new Date(dateValue+"T"+timeValue);
+  let diff=target-new Date();if(diff<0)diff=0;
+  document.getElementById("countDays").innerText=String(Math.floor(diff/(1000*60*60*24))).padStart(2,"0");
+  document.getElementById("countHours").innerText=String(Math.floor((diff/(1000*60*60))%24)).padStart(2,"0");
+  document.getElementById("countMinutes").innerText=String(Math.floor((diff/(1000*60))%60)).padStart(2,"0");
+  document.getElementById("countSeconds").innerText=String(Math.floor((diff/1000)%60)).padStart(2,"0");
+}
+
+function showPreviewForm(){
+  document.getElementById("previewLandingPage").classList.add("hide");
+  document.getElementById("previewFormPage").classList.add("show");
+}
+function showPreviewLanding(){
+  document.getElementById("previewLandingPage").classList.remove("hide");
+  document.getElementById("previewFormPage").classList.remove("show");
+}
+
+function saveEventSettings(){
+  const data={
+    eventTitleLine1:document.getElementById("eventTitleLine1").value,
+    eventTitleLine2:document.getElementById("eventTitleLine2").value,
+    eventDate:document.getElementById("eventDate").value,
+    displayDate:document.getElementById("displayDate").value,
+    eventTime:document.getElementById("eventTime").value,
+    displayTime:document.getElementById("displayTime").value,
+    eventVenue:document.getElementById("eventVenue").value,
+    eventImageUrl:document.getElementById("eventImageUrl").value,
+    eventImageData:currentEventImage,
+    eventDescription:document.getElementById("eventDescription").value
+  };
+  localStorage.setItem("dashboard_event_settings",JSON.stringify(data));
+  alert("Event settings saved!");
+}
+
+function loadEventSettings(){
+  const saved=localStorage.getItem("dashboard_event_settings");
+  const savedImage=localStorage.getItem("dashboard_event_image");
+  if(savedImage)currentEventImage=savedImage;
+  if(saved){
+    const d=JSON.parse(saved);
+    document.getElementById("eventTitleLine1").value=d.eventTitleLine1||"Quantum Method";
+    document.getElementById("eventTitleLine2").value=d.eventTitleLine2||"Orientation";
+    document.getElementById("eventDate").value=d.eventDate||"";
+    document.getElementById("displayDate").value=d.displayDate||"10 June 2026";
+    document.getElementById("eventTime").value=d.eventTime||"";
+    document.getElementById("displayTime").value=d.displayTime||"5:00 PM - 8:00 PM";
+    document.getElementById("eventVenue").value=d.eventVenue||"";
+    document.getElementById("eventImageUrl").value=d.eventImageUrl||"";
+    document.getElementById("eventDescription").value=d.eventDescription||"";
+    if(d.eventImageData)currentEventImage=d.eventImageData;
+  }
+  renderEventPreview();
+}
+
+function saveDatabaseSettings(){
+  const data={
+    sheetId:document.getElementById("sheetId").value.trim(),
+    sheetApiKey:document.getElementById("sheetApiKey").value.trim(),
+    sheetRange:document.getElementById("sheetRange").value.trim()||"Sheet1!A:Z"
+  };
+  localStorage.setItem("dashboard_database_settings",JSON.stringify(data));
+  renderDatabaseSettings();
+  alert("Google Sheet API settings saved!");
+}
+
+function renderDatabaseSettings(){
+  const saved=localStorage.getItem("dashboard_database_settings");if(!saved)return;
+  const d=JSON.parse(saved);
+  document.getElementById("sheetId").value=d.sheetId||"";
+  document.getElementById("sheetApiKey").value=d.sheetApiKey||"";
+  document.getElementById("sheetRange").value=d.sheetRange||"Sheet1!A:Z";
+  document.getElementById("currentSheetId").innerText=d.sheetId||"সেট করা হয়নি";
+  document.getElementById("currentSheetApiKey").innerText=d.sheetApiKey?d.sheetApiKey.slice(0,8)+"********":"সেট করা হয়নি";
+  document.getElementById("currentSheetRange").innerText=d.sheetRange||"Sheet1!A:Z";
+}
+
+function openAddModal(){
+  editingIndex=null;
+  document.getElementById("modalTitle").innerText="নতুন Field যোগ করুন";
+  clearModal();toggleOptionsBox();
+  document.getElementById("fieldModal").style.display="flex";
+}
+
+function openEditModal(index){
+  editingIndex=index;
+  const f=fields[index];
+  document.getElementById("modalTitle").innerText="Field Edit করুন";
+  document.getElementById("fieldLabel").value=f.label;
+  document.getElementById("fieldKey").value=f.key;
+  document.getElementById("fieldType").value=f.type;
+  document.getElementById("fieldPlaceholder").value=f.placeholder||"";
+  document.getElementById("fieldRequired").checked=f.required;
+  document.getElementById("fieldOptions").value=f.options.join(", ");
+  toggleOptionsBox();
+  document.getElementById("fieldModal").style.display="flex";
+}
+
+function closeModal(){document.getElementById("fieldModal").style.display="none";}
+
+function clearModal(){
+  document.getElementById("fieldLabel").value="";
+  document.getElementById("fieldKey").value="";
+  document.getElementById("fieldType").value="text";
+  document.getElementById("fieldPlaceholder").value="";
+  document.getElementById("fieldRequired").checked=false;
+  document.getElementById("fieldOptions").value="";
+}
+
+function toggleOptionsBox(){
+  document.getElementById("optionsBox").style.display=document.getElementById("fieldType").value==="select"?"block":"none";
+}
+
+function generateKey(label){return label.toLowerCase().replace(/[^\w\s]/g,"").trim().replace(/\s+/g,"_");}
+
+function saveFieldFromModal(){
+  const label=document.getElementById("fieldLabel").value.trim();
+  if(!label){alert("Field label লিখুন");return;}
+  const optionsText=document.getElementById("fieldOptions").value.trim();
+  const field={
+    label,
+    key:document.getElementById("fieldKey").value.trim()||generateKey(label),
+    type:document.getElementById("fieldType").value,
+    placeholder:document.getElementById("fieldPlaceholder").value.trim(),
+    required:document.getElementById("fieldRequired").checked,
+    options:optionsText?optionsText.split(",").map(i=>i.trim()).filter(Boolean):[]
+  };
+  if(editingIndex===null)fields.push(field);else fields[editingIndex]=field;
+  renderPreview();renderFieldList();renderFinalPreview();closeModal();
+}
+
+function deleteField(index){
+  if(!confirm("এই field delete করবেন?"))return;
+  fields.splice(index,1);renderPreview();renderFieldList();renderFinalPreview();
+}
+
+function moveField(index,direction){
+  const ni=index+direction;
+  if(ni<0||ni>=fields.length)return;
+  const temp=fields[index];fields[index]=fields[ni];fields[ni]=temp;
+  renderPreview();renderFieldList();renderFinalPreview();
+}
+
+function saveFields(){
+  localStorage.setItem("dashboard_form_fields",JSON.stringify(fields));
+  alert("Fields saved successfully!");
+}
+
+function loadSavedFields(){
+  const saved=localStorage.getItem("dashboard_form_fields");
+  if(saved)fields=JSON.parse(saved);
+}
+
+function saveAllSettings(){
+  saveEventSettings();saveDatabaseSettings();saveFields();
+}
+
+function loadPublishedUrl(){
+  const saved=localStorage.getItem("publishedFormUrl") || localStorage.getItem("published_form_url");
+  if(!saved)return;
+  if(saved.includes("/features/")||saved.endsWith(".html")){
+    localStorage.removeItem("published_form_url");
+    localStorage.removeItem("publishedFormUrl");
+    return;
+  }
+  document.getElementById("publishedFormUrl").value=saved;
+}
+
+document.getElementById("dynamicForm").addEventListener("submit",function(e){
+  e.preventDefault();alert("Form submitted!");
+});
+
+loadSavedFields();
+loadEventSettings();
+renderDatabaseSettings();
+renderPreview();
+renderFieldList();
+renderEventPreview();
+renderFinalPreview();
+loadPublishedUrl();
+if(isPublicRegistrationView())enterPublicRegistrationMode();
+setInterval(updateCountdown,1000);
+</script>
+</body>
+</html>

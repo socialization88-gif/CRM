@@ -1,10 +1,4 @@
-◇ injected env (7) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
-◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
-Server running on port 3000
+◇ injected env (7) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+Server running on http://127.0.0.1:3233
 Dataset 2 is served with server-side pagination
-[executive-created] uthoaingyochak16@gmail.com: Your executive account has been created successfully.
-
-Email: uthoaingyochak16@gmail.com
-Password: 2403181
-
-You can now log in using these credentials.

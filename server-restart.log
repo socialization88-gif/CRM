@@ -1,0 +1,4 @@
+◇ injected env (7) from .env // tip: ⌘ suppress logs { quiet: true }
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Server running on http://127.0.0.1:3231
+Dataset 2 is served with server-side pagination

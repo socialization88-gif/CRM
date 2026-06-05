@@ -2,7 +2,7 @@
   async function loadAdminFragments() {
     const host = document.getElementById('adminFragments');
     if (!host || host.dataset.loaded === 'true') return;
-    const response = await fetch('/admin/admin.html');
+    const response = await fetch('/features/admin/admin.html');
     if (!response.ok) throw new Error('Failed to load admin fragments');
     host.innerHTML = await response.text();
     host.dataset.loaded = 'true';
@@ -10,6 +10,8 @@
 
   window.loadAdminFragments = loadAdminFragments;
 })();
+
+let accountTaskRows = [];
 
 
 async function loadBulkAssignExecutives() {
@@ -188,26 +190,23 @@ async function loadBulkAssignExecutives() {
       } catch (error) { showToast(error.message || 'Overview failed') }
     }
 
-    async function loadExecutiveOverview() {
+    async function loadExecutiveOverview(date = executiveOverviewSelectedDate) {
       if (currentUser?.role !== 'executor') return;
       try {
-        const data = await apiFetch('/api/dashboard/executive');
+        const selectedDate = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+        executiveOverviewSelectedDate = selectedDate;
+        executiveOverviewViewYear = selectedDate.getFullYear();
+        executiveOverviewViewMonth = selectedDate.getMonth();
+        const queryDate = typeof executiveOverviewApiDate === 'function' ? executiveOverviewApiDate(selectedDate) : '';
+        const data = await apiFetch(`/api/dashboard/executive${queryDate ? `?date=${encodeURIComponent(queryDate)}` : ''}`);
         const overview = data.overview || {};
-        document.getElementById('mTotalLabel').textContent = 'Assigned';
-        document.getElementById('mPendingLabel').textContent = 'New';
-        document.getElementById('mCompletedLabel').textContent = 'Pending';
-        document.getElementById('mUpdatedLabel').textContent = 'Completed';
-        document.getElementById('mTotal').textContent = overview.total_assigned || 0;
-        document.getElementById('mPending').textContent = overview.new_tasks || 0;
-        document.getElementById('mCompleted').textContent = overview.previous_pending_tasks || 0;
-        document.getElementById('mUpdated').textContent = overview.completed_tasks || 0;
-        const percent = Number(overview.completion_percentage || 0);
-        document.getElementById('progressPanel').style.display = 'block';
-        const avatar = accountImageSrc(currentUser);
-        document.getElementById('progressBody').innerHTML = `<tr><td><div class="assigned-cell"><img class="assignment-avatar" src="${attr(avatar)}" alt=""><div><b>${esc(currentUser.name)}</b><div class="muted">${esc(currentUser.email)}</div></div></div></td><td>${overview.total_assigned || 0}</td><td>${overview.completed_tasks || 0}</td><td><b>${percent}%</b><div class="progress-wrap"><span style="width:${Math.min(100, percent)}%"></span></div></td></tr>`;
+        executiveOverviewData = overview;
+        if (typeof setOverviewMode === 'function') setOverviewMode('legacy');
+        if (typeof renderExecutiveOverviewCard === 'function') renderExecutiveOverviewCard();
         executiveAssignedRows = Array.isArray(overview.assigned_rows) ? overview.assigned_rows : [];
-        document.getElementById('assignedPanel').style.display = executiveAssignedRows.length ? 'block' : 'none';
-        renderExecutiveAssignments();
+        const assignedPanel = document.getElementById('assignedPanel');
+        if (assignedPanel) assignedPanel.style.display = executiveAssignedRows.length ? 'block' : 'none';
+        if (typeof renderExecutiveAssignments === 'function') renderExecutiveAssignments();
       } catch (error) { showToast(error.message || 'Executive overview failed') }
     }
 
@@ -367,6 +366,7 @@ async function loadBulkAssignExecutives() {
       <td><span class="pill ${attr(taskClass)}">${esc(row.task_status || 'Unassigned')}</span></td>
     </tr>`;
       }).join('');
+      if (typeof window.renderTaskReport === 'function') window.renderTaskReport();
     }
 
     function calculateAgeFromDob(dob) {
@@ -1353,7 +1353,7 @@ async function loadBulkAssignExecutives() {
         if (document.getElementById('accountProfileExecutive')) document.getElementById('accountProfileExecutive').value = '';
         if (document.getElementById('accountAssignInstruction')) document.getElementById('accountAssignInstruction').value = '';
         updateAccountProfileAssignButtonState();
-        await Promise.all([loadRecords(false), loadOverview()]);
+        await Promise.all([loadRecords(false), loadOverview(), loadAccountTaskList().catch(() => null)]);
       } catch (error) {
         showToast(error.message || 'Assign failed');
       }
@@ -1648,6 +1648,73 @@ async function loadBulkAssignExecutives() {
       updateAccountProfileControls();
     }
 
+    function syncAccountTaskTabVisibility() {
+      const tabBtn = document.getElementById('accountTabBtnTask');
+      const tabPanel = document.getElementById('accountTabTask');
+      const showTasks = String(accountProfile?.role || '').toLowerCase() === 'executor';
+      if (tabBtn) tabBtn.style.display = showTasks ? 'inline-flex' : 'none';
+      if (!showTasks && tabPanel) tabPanel.classList.remove('active');
+      if (!showTasks && document.getElementById('accountTabBtnTask')?.classList.contains('active')) {
+        switchAccountTab('personal');
+      }
+    }
+
+    function renderAccountTaskList(message = '') {
+      const list = document.getElementById('accountTaskList');
+      const count = document.getElementById('accountTaskCount');
+      if (!list || !count) return;
+      if (String(accountProfile?.role || '').toLowerCase() !== 'executor') {
+        accountTaskRows = [];
+        list.innerHTML = '<div class="empty">Task list is available only for executive accounts.</div>';
+        count.textContent = '0 tasks';
+        return;
+      }
+      if (!accountTaskRows.length) {
+        list.innerHTML = `<div class="empty">${esc(message || 'No assigned tasks')}</div>`;
+        count.textContent = '0 tasks';
+        return;
+      }
+      count.textContent = `${accountTaskRows.length} task${accountTaskRows.length === 1 ? '' : 's'}`;
+      list.innerHTML = accountTaskRows.map((task, index) => {
+        const assignedAt = task.assigned_at ? formatDateTime(task.assigned_at) : '-';
+        const status = String(task.task_status || 'Pending').trim() || 'Pending';
+        const statusClass = /^(completed|handled)$/i.test(status) ? 'updated' : 'pending';
+        const instruction = String(task.admin_instruction || '').trim();
+        return `<div class="history-item">
+          <div class="history-top">
+            <b>#${esc(task.row_number || index + 1)} ${esc(task.name || '-')}</b>
+            <span class="pill ${statusClass}">${esc(status)}</span>
+          </div>
+          <div class="muted">${esc(task.stage || 'Task')}</div>
+          <div class="muted">Assigned at: ${esc(assignedAt)}</div>
+          ${task.mobile ? `<div class="muted">Mobile: ${esc(task.mobile)}</div>` : ''}
+          ${task.email ? `<div class="muted">Email: ${esc(task.email)}</div>` : ''}
+          ${instruction ? `<div class="muted">${esc(instruction)}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    async function loadAccountTaskList() {
+      const list = document.getElementById('accountTaskList');
+      const count = document.getElementById('accountTaskCount');
+      if (!list || !count || !accountProfile?.id) return;
+      if (String(accountProfile?.role || '').toLowerCase() !== 'executor') {
+        accountTaskRows = [];
+        renderAccountTaskList();
+        return;
+      }
+      list.innerHTML = '<div class="empty">Loading tasks...</div>';
+      count.textContent = '...';
+      try {
+        const data = await apiFetch('/api/users/' + encodeURIComponent(accountProfile.id) + '/tasks');
+        accountTaskRows = Array.isArray(data.tasks) ? data.tasks : [];
+        renderAccountTaskList();
+      } catch (error) {
+        accountTaskRows = [];
+        renderAccountTaskList(error.message || 'Task list failed');
+      }
+    }
+
     function clearAccountHistory() {
       if (!isAccountProfileEditable()) return;
       accountProfile.metadata = accountMetadata();
@@ -1695,6 +1762,10 @@ async function loadBulkAssignExecutives() {
       renderAccountFamilyInfo();
       renderAccountAttendance();
       renderAccountHistory();
+      syncAccountTaskTabVisibility();
+      accountTaskRows = [];
+      renderAccountTaskList();
+      loadAccountTaskList();
       updateAccountProfileAssignButtonState();
       setAccountProfileEditMode(Boolean(edit));
       updateAccountProfileDeleteButtonState();
@@ -1703,14 +1774,19 @@ async function loadBulkAssignExecutives() {
     }
 
     function closeAccountProfile() {
-      document.getElementById('accountModal').style.display = 'none';
-      document.getElementById('accountModal').classList.remove('profile-readonly');
-      document.getElementById('accountModalAvatar').src = accountAvatarSvg('Account');
+      const modal = document.getElementById('accountModal');
+      const avatar = document.getElementById('accountModalAvatar');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('profile-readonly');
+      }
+      if (avatar) avatar.src = accountAvatarSvg('Account');
       accountProfile = null;
       accountProfileSnapshot = null;
       accountProfileEditMode = false;
       accountHistoryOpen = false;
       deleteAccountTarget = null;
+      accountTaskRows = [];
     }
 
     function setAccountProfileEditMode(enabled) {
@@ -1734,6 +1810,7 @@ async function loadBulkAssignExecutives() {
       renderAccountCustomFields();
       renderAccountFamilyInfo();
       renderAccountAttendance();
+      syncAccountTaskTabVisibility();
     }
 
     function updateAccountProfileDeleteButtonState() {
@@ -1758,9 +1835,11 @@ async function loadBulkAssignExecutives() {
       fillAccountPersonalForm();
       renderAccountCustomFields();
       renderAccountFamilyInfo();
-      renderAccountAttendance();
-      renderAccountHistory();
-      updateAccountProfileAssignButtonState();
+        renderAccountAttendance();
+        renderAccountHistory();
+        syncAccountTaskTabVisibility();
+        renderAccountTaskList();
+        updateAccountProfileAssignButtonState();
       setAccountProfileEditMode(false);
       switchAccountTab('personal');
     }
@@ -1799,6 +1878,9 @@ async function loadBulkAssignExecutives() {
         renderAccountFamilyInfo();
         renderAccountAttendance();
         renderAccountHistory();
+        syncAccountTaskTabVisibility();
+        renderAccountTaskList();
+        await loadAccountTaskList().catch(() => null);
         setAccountProfileEditMode(false);
         renderUsers();
         if (currentUser && String(currentUser.id) === String(updated.id)) {
@@ -2131,6 +2213,7 @@ async function loadBulkAssignExecutives() {
     function toggleAiChat(force) {
       const drawer = document.getElementById('aiDrawer');
       const backdrop = document.getElementById('aiBackdrop');
+      if (!drawer || !backdrop) return;
       const open = force === undefined ? !drawer.classList.contains('open') : Boolean(force);
       drawer.classList.toggle('open', open);
       backdrop.classList.toggle('open', open);

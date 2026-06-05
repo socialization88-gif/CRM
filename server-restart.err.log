@@ -1,0 +1,518 @@
+(node:9200) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Health error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Promise.all (index 0)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2180:32 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Unhandled error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async getUserById (C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:437:18)
+    at async requireAuth (C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:465:18) {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}
+Login error: AggregateError [ETIMEDOUT]: 
+    at C:\Users\Uthoaingyo\Quantum CRM\CRM\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Uthoaingyo\Quantum CRM\CRM\server.js:2205:20 {
+  code: 'ETIMEDOUT',
+  [errors]: [
+    Error: connect ETIMEDOUT 3.0.167.45:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '3.0.167.45',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 13.251.17.193:5432
+        at createConnectionError (node:net:1678:14)
+        at Timeout.internalConnectMultipleTimeout (node:net:1737:38)
+        at listOnTimeout (node:internal/timers:607:11)
+        at process.processTimers (node:internal/timers:541:7) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '13.251.17.193',
+      port: 5432
+    },
+    Error: connect ETIMEDOUT 18.138.49.39:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4039,
+      code: 'ETIMEDOUT',
+      syscall: 'connect',
+      address: '18.138.49.39',
+      port: 5432
+    }
+  ]
+}

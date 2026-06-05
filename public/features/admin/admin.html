@@ -293,6 +293,7 @@
           <div class="tabs">
             <button class="tab-btn active" id="accountTabBtnPersonal" onclick="switchAccountTab('personal')">Personal
               Information</button>
+            <button class="tab-btn" id="accountTabBtnTask" onclick="switchAccountTab('task')">Task</button>
             <button class="tab-btn" id="accountTabBtnFamily" onclick="switchAccountTab('family')">Family Info</button>
             <button class="tab-btn" id="accountTabBtnAttendance" onclick="switchAccountTab('attendance')">Program
               Attendance</button>
@@ -405,6 +406,17 @@
               <button id="accountAddAttendanceBtn" onclick="addAccountAttendance()">Add Attendance</button>
             </div>
             <div class="attendance-list" id="accountAttendanceList"></div>
+          </div>
+
+          <div id="accountTabTask" class="tab-panel info">
+            <div class="history-top">
+              <div>
+                <div class="label">Task List</div>
+                <div class="muted">Tasks assigned to this executive account.</div>
+              </div>
+              <div class="muted" id="accountTaskCount">0 tasks</div>
+            </div>
+            <div class="history-list" id="accountTaskList"></div>
           </div>
 
           <div class="info">

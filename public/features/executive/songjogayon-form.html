@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>সংযোগায়ন সারাংশ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --brand:       #1a56db;
+      --brand-dark:  #1241a8;
+      --brand-light: #e8f0fe;
+      --brand-mid:   #c7d9fd;
+      --surface:     #ffffff;
+      --bg:          #f0f4fb;
+      --border:      #dce6f5;
+      --text:        #0d1b38;
+      --text-2:      #3a506b;
+      --text-3:      #64748b;
+      --danger:      #e02424;
+      --danger-bg:   #fff0f0;
+      --success:     #16a34a;
+      --radius-card: 20px;
+      --radius-input:10px;
+      --shadow-card: 0 2px 16px rgba(26,86,219,.07), 0 1px 4px rgba(0,0,0,.04);
+      --shadow-hover: 0 4px 24px rgba(26,86,219,.13);
+      --transition:  .18s ease;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      font-family: 'Noto Sans Bengali', sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ─── Page wrapper ─────────────────────────────── */
+    .page {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 28px 16px 48px;
+    }
+
+    /* ─── Header ───────────────────────────────────── */
+    .header-card {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+      border-radius: var(--radius-card);
+      padding: 36px 32px 30px;
+      margin-bottom: 20px;
+      color: #fff;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(26,86,219,.28);
+    }
+
+    .header-card::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 220px; height: 220px;
+      background: rgba(255,255,255,.06);
+      border-radius: 50%;
+    }
+    .header-card::after {
+      content: '';
+      position: absolute;
+      bottom: -40px; left: -40px;
+      width: 160px; height: 160px;
+      background: rgba(255,255,255,.05);
+      border-radius: 50%;
+    }
+
+    .header-card h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -.3px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .header-card p {
+      margin-top: 6px;
+      font-size: 13.5px;
+      font-weight: 500;
+      opacity: .85;
+      position: relative;
+      z-index: 1;
+      letter-spacing: .5px;
+    }
+
+    /* ─── Section card ─────────────────────────────── */
+    .form-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 24px 24px 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow-card);
+      transition: box-shadow var(--transition);
+    }
+
+    .form-card:hover {
+      box-shadow: var(--shadow-hover);
+    }
+
+    /* ─── Section titles ───────────────────────────── */
+    .section-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title .icon {
+      width: 32px; height: 32px;
+      border-radius: 9px;
+      background: var(--brand-light);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .section-title .icon svg {
+      width: 16px; height: 16px;
+      fill: var(--brand);
+    }
+
+    .section-subtitle {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--brand);
+      margin: 20px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--brand-light);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .section-subtitle::before {
+      content: '';
+      width: 4px; height: 14px;
+      border-radius: 2px;
+      background: var(--brand);
+      display: inline-block;
+    }
+
+    /* ─── Labels & fields ──────────────────────────── */
+    label {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text-2);
+      letter-spacing: .1px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .input-box {
+      width: 100%;
+      min-height: 40px;
+      padding: 9px 13px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-input);
+      background: #fafcff;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+    }
+
+    .input-box::placeholder { color: #b0bec5; }
+
+    .input-box:focus {
+      border-color: var(--brand);
+      background: #fff;
+      box-shadow: 0 0 0 3.5px rgba(26,86,219,.10);
+    }
+
+    textarea.input-box {
+      min-height: 70px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    /* ─── Grids ────────────────────────────────────── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    /* ─── Stat box ─────────────────────────────────── */
+    .stat-box {
+      background: #f5f8ff;
+      border: 1.5px solid var(--brand-mid);
+      border-radius: 14px;
+      padding: 13px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color var(--transition);
+    }
+
+    .stat-box:focus-within {
+      border-color: var(--brand);
+    }
+
+    .stat-box label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--brand-dark);
+    }
+
+    .stat-box .sub-label {
+      font-size: 10.5px;
+      color: var(--text-3);
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .stat-box .input-box {
+      min-height: 36px;
+      font-size: 13px;
+      text-align: center;
+      font-weight: 600;
+      background: #fff;
+    }
+
+    /* ─── Basic card date row ──────────────────────── */
+    .basic-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .date-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--brand-light);
+      border: 1.5px solid var(--brand-mid);
+      border-radius: 12px;
+      padding: 8px 14px;
+      flex-shrink: 0;
+    }
+
+    .date-field label {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--brand-dark);
+      white-space: nowrap;
+    }
+
+    .date-field .input-box {
+      min-height: 34px;
+      padding: 6px 10px;
+      background: #fff;
+      border-color: var(--brand-mid);
+      font-size: 13px;
+      width: auto;
+      min-width: 148px;
+    }
+
+    /* ─── Time section ─────────────────────────────── */
+    .time-section {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 18px;
+    }
+
+    .time-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .time-row {
+      display: grid;
+      grid-template-columns: 28px 1fr 38px 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .time-number {
+      font-weight: 800;
+      color: var(--brand);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .time-sep {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-align: center;
+    }
+
+    /* ─── Checkbox area ────────────────────────────── */
+    .checkbox-area {
+      background: #f5f8ff;
+      border: 1.5px solid var(--brand-mid);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: fit-content;
+    }
+
+    .checkbox-area-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--brand);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 2px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-2);
+      cursor: pointer;
+      line-height: 1.4;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: 18px; height: 18px;
+      accent-color: var(--brand);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    /* ─── Total row ────────────────────────────────── */
+    .total-row {
+      margin-top: 18px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: var(--brand-light);
+      border: 1.5px solid var(--brand-mid);
+      border-radius: 14px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--brand-dark);
+    }
+
+    .total-input {
+      max-width: 80px;
+      text-align: center;
+      background: #fff;
+      font-weight: 800;
+      color: var(--brand-dark);
+      font-size: 15px;
+      border-color: var(--brand-mid);
+    }
+
+    /* ─── Point rows ───────────────────────────────── */
+    .point-row {
+      display: grid;
+      grid-template-columns: 30px 1fr auto;
+      gap: 10px;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+
+    .point-number {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      background: var(--brand-light);
+      color: var(--brand);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800;
+      font-size: 13px;
+      flex-shrink: 0;
+      margin-top: 4px;
+      border: 1.5px solid var(--brand-mid);
+    }
+
+    /* ─── Buttons ──────────────────────────────────── */
+    .add-time-btn,
+    .add-point-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 8px 16px;
+      border: 1.5px dashed var(--brand);
+      border-radius: 10px;
+      background: var(--brand-light);
+      color: var(--brand);
+      cursor: pointer;
+      font-weight: 700;
+      font-family: inherit;
+      font-size: 13px;
+      transition: background var(--transition), transform var(--transition);
+    }
+
+    .add-time-btn:hover,
+    .add-point-btn:hover {
+      background: var(--brand-mid);
+      transform: translateY(-1px);
+    }
+
+    .remove-time-btn,
+    .remove-point-btn {
+      padding: 7px 11px;
+      border: 0;
+      border-radius: 9px;
+      background: var(--danger-bg);
+      color: var(--danger);
+      cursor: pointer;
+      font-weight: 700;
+      font-family: inherit;
+      font-size: 12px;
+      transition: background var(--transition);
+      white-space: nowrap;
+    }
+
+    .remove-time-btn:hover,
+    .remove-point-btn:hover {
+      background: #ffd5d5;
+    }
+
+    /* ─── Submit area ──────────────────────────────── */
+    .button-area {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin-top: 8px;
+      padding-top: 24px;
+      border-top: 1.5px solid var(--border);
+    }
+
+    .submit-btn,
+    .pdf-btn {
+      min-width: 190px;
+      height: 48px;
+      border: 0;
+      border-radius: 13px;
+      cursor: pointer;
+      font-size: 14.5px;
+      font-weight: 800;
+      color: #fff;
+      font-family: inherit;
+      letter-spacing: .2px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+    }
+
+    .submit-btn {
+      background: linear-gradient(135deg, #16a34a, #15803d);
+      box-shadow: 0 4px 16px rgba(22,163,74,.3);
+    }
+
+    .submit-btn:hover {
+      filter: brightness(1.07);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(22,163,74,.38);
+    }
+
+    .pdf-btn {
+      background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+      box-shadow: 0 4px 16px rgba(26,86,219,.3);
+    }
+
+    .pdf-btn:hover {
+      filter: brightness(1.07);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(26,86,219,.38);
+    }
+
+    /* ─── Print ────────────────────────────────────── */
+    @media print {
+      body { background: #fff; }
+      .page { margin: 0; padding: 0; max-width: 100%; }
+      .form-card { box-shadow: none; }
+      .button-area, .add-point-btn, .remove-point-btn, .add-time-btn, .remove-time-btn { display: none !important; }
+      @page { size: A4; margin: 8mm; }
+    }
+
+    /* ─── Responsive ───────────────────────────────── */
+    @media (max-width: 700px) {
+      .page { padding: 16px 12px 40px; }
+      .header-card { padding: 26px 20px 22px; }
+      .header-card h1 { font-size: 24px; }
+      .form-card { padding: 18px 16px; }
+
+      .basic-top { flex-direction: column; }
+      .date-field { width: 100%; }
+
+      .grid-2, .grid-4, .time-section { grid-template-columns: 1fr; }
+
+      .time-row { grid-template-columns: 28px 1fr 30px 1fr; }
+      .remove-time-btn { grid-column: 2 / -1; width: fit-content; }
+
+      .point-row { grid-template-columns: 30px 1fr; }
+      .remove-point-btn { grid-column: 2; margin-top: 4px; width: fit-content; }
+
+      .button-area { flex-direction: column; }
+      .submit-btn, .pdf-btn { min-width: auto; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<main class="page" id="formArea">
+  <form id="songjogForm">
+
+    <!-- ══ Header ══════════════════════════════════════ -->
+    <div class="header-card">
+      <h1>সংযোগায়ন সারাংশ</h1>
+      <p>Daily Contact Report</p>
+    </div>
+
+    <!-- ══ Basic Information ════════════════════════════ -->
+    <section class="form-card">
+      <div class="basic-top">
+        <h2 class="section-title" style="margin-bottom:0;">
+          <span class="icon">
+            <svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+          </span>
+          Basic Information
+        </h2>
+        <div class="date-field">
+          <label for="date">তারিখ</label>
+          <input class="input-box" id="date" type="date" name="date" />
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>নাম</label>
+          <input class="input-box" type="text" name="name" placeholder="নাম লিখুন" />
+        </div>
+        <div class="field">
+          <label>পদবী</label>
+          <input class="input-box" type="text" name="designation" placeholder="পদবী লিখুন" />
+        </div>
+        <div class="field">
+          <label>মোবাইল</label>
+          <input class="input-box" type="text" name="mobile" placeholder="মোবাইল নম্বর লিখুন" />
+        </div>
+        <div class="field">
+          <label>সেন্টার / শাখা / সেল</label>
+          <input class="input-box" type="text" name="center_branch_cell" placeholder="সেন্টার/শাখা/সেল লিখুন" />
+        </div>
+        <div class="field">
+          <label>প্রোগ্রাম / উদ্দেশ্য</label>
+          <input class="input-box" type="text" name="program_purpose" placeholder="প্রোগ্রাম বা উদ্দেশ্য লিখুন" />
+        </div>
+        <div class="field">
+          <label>সুনির্দিষ্ট প্রোগ্রাম</label>
+          <input class="input-box" type="text" name="specific_program" placeholder="সুনির্দিষ্ট প্রোগ্রাম লিখুন" />
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Contact Summary ══════════════════════════════ -->
+    <section class="form-card">
+      <h2 class="section-title">
+        <span class="icon">
+          <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+        </span>
+        Contact Summary
+      </h2>
+
+      <div class="field" style="margin-bottom:18px;">
+        <label>যাদের সাথে যোগাযোগ করা হচ্ছে</label>
+        <input class="input-box" type="text" name="contacted_people" placeholder="যাদের সাথে যোগাযোগ করা হচ্ছে লিখুন" />
+      </div>
+
+      <h3 class="section-subtitle">ফোন রিসিভ করেছেন</h3>
+      <div class="grid-4">
+        <div class="stat-box">
+          <label>প্রো-মাস্টার</label>
+          <input class="input-box" type="text" name="called_pro_master" placeholder="০" />
+        </div>
+        <div class="stat-box">
+          <label>গ্র্যাজুয়েট</label>
+          <input class="input-box" type="text" name="called_graduate" placeholder="০" />
+        </div>
+        <div class="stat-box">
+          <label>এসোসিয়েট</label>
+          <input class="input-box" type="text" name="called_associate" placeholder="০" />
+        </div>
+        <div class="stat-box">
+          <label>একেবারে নতুন</label>
+          <input class="input-box" type="text" name="called_new" placeholder="০" />
+          <span class="sub-label">আপনিই প্রথম ফোন দিচ্ছেন</span>
+        </div>
+      </div>
+
+      <h3 class="section-subtitle">ফোন রিসিভ করেন নি</h3>
+      <div class="grid-4">
+        <div class="stat-box">
+          <label>প্রো-মাস্টার</label>
+          <input class="input-box" type="text" name="not_received_pro_master" placeholder="০" />
+        </div>
+        <div class="stat-box">
+          <label>গ্র্যাজুয়েট</label>
+          <input class="input-box" type="text" name="not_received_graduate" placeholder="০" />
+        </div>
+        <div class="stat-box">
+          <label>এসোসিয়েট</label>
+          <input class="input-box" type="text" name="not_received_associate" placeholder="০" />
+        </div>
+        <div class="stat-box">
+          <label>একেবারে নতুন</label>
+          <input class="input-box" type="text" name="not_received_new" placeholder="০" />
+          <span class="sub-label">আপনিই প্রথম ফোন দিচ্ছেন</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Time ═════════════════════════════════════════ -->
+    <section class="form-card">
+      <h2 class="section-title">
+        <span class="icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm.5 5v5.8l4.8 2.8-.8 1.4-5.5-3.2V7h1.5z"/></svg>
+        </span>
+        সংযোগায়নের সময়
+      </h2>
+
+      <div class="time-section">
+        <div>
+          <div id="timeContainer" class="time-list">
+            <div class="time-row">
+              <span class="time-number">১)</span>
+              <input class="input-box time-start" type="time" name="time_start[]" onchange="calculateTotalTime()" oninput="calculateTotalTime()" />
+              <span class="time-sep">থেকে</span>
+              <input class="input-box time-end" type="time" name="time_end[]" onchange="calculateTotalTime()" oninput="calculateTotalTime()" />
+              <button type="button" class="remove-time-btn" onclick="removeTime(this)">✕</button>
+            </div>
+          </div>
+          <button type="button" class="add-time-btn" onclick="addTime()">+ নতুন সময়</button>
+        </div>
+
+        <div class="checkbox-area">
+          <div class="checkbox-area-title">অতিরিক্ত তথ্য</div>
+          <label class="checkbox-label">
+            <input type="checkbox" name="meditation_before" />
+            সংযোগায়নের আগে মেডিটেশন
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="prayer_after" />
+            সংযোগায়ন শেষে প্রার্থনা
+          </label>
+        </div>
+      </div>
+
+      <div class="total-row">
+        মোট
+        <input class="input-box total-input" type="text" id="totalHours" name="total_hours" placeholder="০" readonly />
+        ঘণ্টা
+        <input class="input-box total-input" type="text" id="totalMinutes" name="total_minutes" placeholder="০০" readonly />
+        মিনিট
+      </div>
+    </section>
+
+    <!-- ══ Feedback ═════════════════════════════════════ -->
+    <section class="form-card">
+      <h2 class="section-title">
+        <span class="icon">
+          <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>
+        </span>
+        ফিডব্যাক
+      </h2>
+
+      <h3 class="section-subtitle">আজকের সংযোগায়নের ইতিবাচক দিক</h3>
+      <div id="positiveContainer">
+        <div class="point-row">
+          <div class="point-number">১</div>
+          <textarea class="input-box" name="positive_points[]" placeholder="ইতিবাচক দিক লিখুন"></textarea>
+          <button type="button" class="remove-point-btn" onclick="removePoint(this)">✕</button>
+        </div>
+      </div>
+      <button type="button" class="add-point-btn" onclick="addPoint('positiveContainer','positive_points[]','ইতিবাচক দিক লিখুন')">+ নতুন পয়েন্ট</button>
+
+      <h3 class="section-subtitle">যেসব চ্যালেঞ্জ হয়েছে</h3>
+      <div id="challengeContainer">
+        <div class="point-row">
+          <div class="point-number">১</div>
+          <textarea class="input-box" name="challenge_points[]" placeholder="চ্যালেঞ্জ লিখুন"></textarea>
+          <button type="button" class="remove-point-btn" onclick="removePoint(this)">✕</button>
+        </div>
+      </div>
+      <button type="button" class="add-point-btn" onclick="addPoint('challengeContainer','challenge_points[]','চ্যালেঞ্জ লিখুন')">+ নতুন পয়েন্ট</button>
+
+      <h3 class="section-subtitle">আপনার পরামর্শ</h3>
+      <div id="suggestionContainer">
+        <div class="point-row">
+          <div class="point-number">১</div>
+          <textarea class="input-box" name="suggestion_points[]" placeholder="পরামর্শ লিখুন"></textarea>
+          <button type="button" class="remove-point-btn" onclick="removePoint(this)">✕</button>
+        </div>
+      </div>
+      <button type="button" class="add-point-btn" onclick="addPoint('suggestionContainer','suggestion_points[]','পরামর্শ লিখুন')">+ নতুন পয়েন্ট</button>
+    </section>
+
+    <!-- ══ Buttons ══════════════════════════════════════ -->
+    <div class="button-area">
+      <button type="submit" class="submit-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        Submit
+      </button>
+      <button type="button" class="pdf-btn" onclick="downloadPDF()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
+        PDF / Print
+      </button>
+    </div>
+
+  </form>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+  const songjogForm = document.getElementById('songjogForm');
+
+  function convertToBanglaNumber(n) {
+    const d = ['০','১','২','৩','৪','৫','৬','৭','৮','৯'];
+    return String(n).split('').map(c => d[+c] ?? c).join('');
+  }
+
+  function updateTimeNumbers() {
+    const rows = document.querySelectorAll('#timeContainer .time-row');
+    rows.forEach((row, i) => {
+      row.querySelector('.time-number').textContent = convertToBanglaNumber(i+1)+')';
+      const btn = row.querySelector('.remove-time-btn');
+      btn.style.display = rows.length === 1 ? 'none' : 'inline-flex';
+    });
+  }
+
+  function timeToMinutes(v) {
+    if (!v) return null;
+    const [h,m] = v.split(':').map(Number);
+    if (isNaN(h)||isNaN(m)) return null;
+    return h*60+m;
+  }
+
+  function calculateTotalTime() {
+    let total = 0;
+    document.querySelectorAll('#timeContainer .time-row').forEach(row => {
+      const s = timeToMinutes(row.querySelector('.time-start').value);
+      const e = timeToMinutes(row.querySelector('.time-end').value);
+      if (s===null||e===null) return;
+      let d = e-s; if(d<0) d+=1440;
+      total += d;
+    });
+    document.getElementById('totalHours').value   = convertToBanglaNumber(Math.floor(total/60));
+    document.getElementById('totalMinutes').value = convertToBanglaNumber(total%60);
+  }
+
+  function addTime() {
+    const c = document.getElementById('timeContainer');
+    const row = document.createElement('div');
+    row.className = 'time-row';
+    row.innerHTML = `
+      <span class="time-number"></span>
+      <input class="input-box time-start" type="time" name="time_start[]" onchange="calculateTotalTime()" oninput="calculateTotalTime()" />
+      <span class="time-sep">থেকে</span>
+      <input class="input-box time-end" type="time" name="time_end[]" onchange="calculateTotalTime()" oninput="calculateTotalTime()" />
+      <button type="button" class="remove-time-btn" onclick="removeTime(this)">✕</button>
+    `;
+    c.appendChild(row);
+    updateTimeNumbers(); calculateTotalTime();
+  }
+
+  function removeTime(btn) {
+    const rows = document.querySelectorAll('#timeContainer .time-row');
+    if (rows.length<=1) return;
+    btn.closest('.time-row').remove();
+    updateTimeNumbers(); calculateTotalTime();
+  }
+
+  function updatePointNumbers(id) {
+    const rows = document.querySelectorAll('#'+id+' .point-row');
+    rows.forEach((row,i) => {
+      row.querySelector('.point-number').textContent = convertToBanglaNumber(i+1);
+      const btn = row.querySelector('.remove-point-btn');
+      btn.style.display = rows.length===1 ? 'none' : 'inline-flex';
+    });
+  }
+
+  function addPoint(containerId, fieldName, placeholder) {
+    const c = document.getElementById(containerId);
+    const row = document.createElement('div');
+    row.className = 'point-row';
+    row.innerHTML = `
+      <div class="point-number"></div>
+      <textarea class="input-box" name="${fieldName}" placeholder="${placeholder}"></textarea>
+      <button type="button" class="remove-point-btn" onclick="removePoint(this)">✕</button>
+    `;
+    c.appendChild(row);
+    updatePointNumbers(containerId);
+  }
+
+  function removePoint(btn) {
+    const container = btn.closest('[id]');
+    if (container.querySelectorAll('.point-row').length<=1) return;
+    btn.closest('.point-row').remove();
+    updatePointNumbers(container.id);
+  }
+
+  ['positiveContainer','challengeContainer','suggestionContainer'].forEach(updatePointNumbers);
+  updateTimeNumbers(); calculateTotalTime();
+
+  songjogForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    calculateTotalTime();
+    const fd = new FormData(songjogForm), data = {};
+    for (const [k,v] of fd.entries()) {
+      if (k.endsWith('[]')) {
+        const ck = k.replace('[]','');
+        if(!data[ck]) data[ck]=[];
+        data[ck].push(v);
+      } else { data[k]=v; }
+    }
+    data.meditation_before = songjogForm.meditation_before.checked;
+    data.prayer_after = songjogForm.prayer_after.checked;
+    console.log('Form Data:', data);
+    alert('ফর্ম সফলভাবে Submit হয়েছে।');
+  });
+
+  async function downloadPDF() {
+    calculateTotalTime();
+    const hide = [...document.querySelectorAll('.button-area,.add-point-btn,.remove-point-btn,.add-time-btn,.remove-time-btn')];
+    hide.forEach(el => el.style.display='none');
+    const canvas = await html2canvas(document.getElementById('formArea'), { scale:2, useCORS:true, backgroundColor:'#ffffff' });
+    hide.forEach(el => el.style.display='');
+    ['positiveContainer','challengeContainer','suggestionContainer'].forEach(updatePointNumbers);
+    updateTimeNumbers();
+    const pdf = new window.jspdf.jsPDF('p','mm','a4');
+    const pw=210, ph=297, iw=pw, ih=(canvas.height*pw)/canvas.width;
+    let left=ih, pos=0;
+    pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,pos,iw,ih);
+    left-=ph;
+    while(left>0){ pos=left-ih; pdf.addPage(); pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,pos,iw,ih); left-=ph; }
+    pdf.save('songjogayon-saransho.pdf');
+  }
+</script>
+</body>
+</html>
