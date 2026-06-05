@@ -1,9 +1,10 @@
-node_modules/
-.env
-tmp_uploads/
-cloudinary_results.json
-.DS_Store
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-dist/
+# node_modules/
+# .env
+# tmp_uploads/
+# cloudinary_results.json
+# .DS_Store
+# npm-debug.log*
+# yarn-debug.log*
+# yarn-error.log*
+# dist/
+node_modules
