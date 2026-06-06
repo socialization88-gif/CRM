@@ -1677,6 +1677,7 @@ window.addEventListener('resize', () => {
     const buttonArea = document.querySelector('#taskReportPanel .button-area');
     if (buttonArea) buttonArea.style.display = taskReportState.tab === 'form' ? 'flex' : 'none';
     if (taskReportState.tab === 'feedback') ensureTaskReportFeedbackDefaults();
+<<<<<<< HEAD
     const activeFrame = document.querySelector(`#taskReportPanel [data-task-report-panel="${taskReportState.tab}"] iframe`);
     if (activeFrame) setTimeout(() => resizeTaskReportFrame(activeFrame), 50);
   }
@@ -1906,7 +1907,38 @@ window.addEventListener('resize', () => {
     } catch (error) {
       frame.style.height = 'calc(100vh - 175px)';
     }
+=======
+    // ensure iframe sizing updates after switching tabs
+    try { adjustTaskReportIframeHeight(); } catch (e) { /* ignore */ }
+>>>>>>> e2609fc (modify setting)
   }
+
+  // Adjust iframe heights inside task report to avoid nested scrollbars.
+  function adjustTaskReportIframeHeight() {
+    const panel = document.getElementById('taskReportPanel');
+    if (!panel) return;
+    const top = panel.querySelector('.task-report-top');
+    const iframeForm = document.getElementById('taskReportFormFrame');
+    const iframeFeedback = document.getElementById('taskReportFeedbackFrame');
+    const panelRect = panel.getBoundingClientRect();
+    const topHeight = top ? top.getBoundingClientRect().height : 0;
+    // compute available height inside panel (subtract small padding)
+    const available = Math.max(panel.clientHeight - topHeight - 32, 300);
+    if (iframeForm) iframeForm.style.height = available + 'px';
+    if (iframeFeedback) iframeFeedback.style.height = available + 'px';
+  }
+
+  window.addEventListener('resize', () => {
+    adjustTaskReportIframeHeight();
+  });
+
+  // ensure height is correct when tabs change or on first render
+  const originalSetTaskReportTab = setTaskReportTab;
+  // wrap to call adjust after switching tabs
+  window.setTaskReportTab = function(tab) { originalSetTaskReportTab(tab); adjustTaskReportIframeHeight(); };
+
+  // call once on load
+  setTimeout(adjustTaskReportIframeHeight, 100);
 
   function renumberTaskReportTimeRows() {
     const rows = Array.from(document.querySelectorAll('#taskReportTimeContainer .task-report-time-row'));
@@ -2103,11 +2135,11 @@ window.addEventListener('resize', () => {
       tr.style.borderBottom = '1px solid #e2e8f0';
       tr.style.background = index % 2 === 0 ? '#ffffff' : '#f7fafc';
       tr.innerHTML = `
-        <td style="padding:10px 14px;color:#2d3748;">${row.name}</td>
-        <td style="padding:10px 14px;color:#4a5568;">${row.status}</td>
-        <td style="padding:10px 14px;color:#4a5568;">${row.time}</td>
-        <td style="padding:10px 14px;"><span style="font-size:12px;font-weight:600;color:#2b6cb0;cursor:pointer;letter-spacing:.04em;">SEND</span></td>
-        <td style="padding:10px 14px;text-align:center;">
+        <td style="padding:10px 14px;color:#2d3748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${row.name}</td>
+        <td style="padding:10px 14px;color:#4a5568;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${row.status}</td>
+        <td style="padding:10px 14px;color:#4a5568;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${row.time}</td>
+        <td style="padding:10px 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="font-size:12px;font-weight:600;color:#2b6cb0;cursor:pointer;letter-spacing:.04em;">SEND</span></td>
+        <td style="padding:10px 14px;text-align:center;white-space:nowrap;">
           <button type="button" class="task-view-btn" onclick="viewTaskSummaryConnector(${index})">VIEW</button>
         </td>
       `;
@@ -2367,7 +2399,7 @@ function switchView(view, options = {}) {
   if (view === 'accounts' && currentUser?.role === 'admin') { loadCommunicationConnectors(); renderCommunityConnectorCard(); }
   if (view === 'adminTask' && currentUser?.role === 'admin' && typeof window.loadAdminTaskRows === 'function') window.loadAdminTaskRows();
   if (taskMode || (actualView === 'records' && !options.skipLoad)) loadRecords(true);
-  if (view === 'settings') { loadProgramSettings(); loadPermissions(); loadAiSettings(); loadCommunicationConnectors(); }
+  if (view === 'settings') { loadProgramSettings(); loadBulkAssignExecutives(); loadAiSettings(); loadCommunicationConnectors(); }
   if (view === 'autosuggestion') { setTimeout(bindAutosuggestionSourceFrame, 0); }
   if (window.matchMedia('(max-width: 1100px)').matches) {
     document.body.classList.remove('sidebar-open');
@@ -2415,6 +2447,7 @@ async function loadBulkAssignExecutives() {
     bulkAssignExecutiveRows = executiveAccounts;
     renderFilterOptions();
     renderAccountExecutiveOptions();
+    renderSettingsExecutiveList();
     renderBulkAssignPanel();
     renderBulkSegments();
   } catch {
@@ -2422,6 +2455,7 @@ async function loadBulkAssignExecutives() {
     bulkAssignExecutiveRows = [];
     renderFilterOptions();
     renderAccountExecutiveOptions();
+    renderSettingsExecutiveList();
     renderBulkAssignPanel();
     renderBulkSegments();
   }
@@ -2431,6 +2465,30 @@ function bulkAssignExecutiveList() {
   if (executiveAccounts.length) return executiveAccounts;
   if (bulkAssignExecutiveRows.length) return bulkAssignExecutiveRows;
   return accountRows.filter(user => String(user.role || '').toLowerCase() === 'executor');
+}
+
+function renderSettingsExecutiveList() {
+  const list = document.getElementById('settingsExecutiveList');
+  const count = document.getElementById('settingsExecutiveCount');
+  if (!list || !count) return;
+  const rows = bulkAssignExecutiveList();
+  count.textContent = `${rows.length} executive${rows.length === 1 ? '' : 's'}`;
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty">No executive accounts found</div>';
+    return;
+  }
+  list.innerHTML = rows.map((executive) => {
+    const name = executive.name || executive.email || 'Executive';
+    const email = executive.email || '-';
+    const phone = executive.phone || executive.mobile || '';
+    return `<div class="settings-executive-row">
+      <img class="assignment-avatar" src="${attr(accountAvatarSvg(name))}" alt="">
+      <div class="settings-executive-info">
+        <b title="${attr(name)}">${esc(name)}</b>
+        <div class="muted" title="${attr([email, phone].filter(Boolean).join(' | '))}">${esc(email)}${phone ? ` | ${esc(phone)}` : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 async function loadPermissions() {

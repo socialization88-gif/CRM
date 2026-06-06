@@ -1,5 +1,5 @@
 {
-  "name": "quantum-work-management",
+  "name": "package.json",
   "productName": "QUANTUM Work Management",
   "description": "QUANTUM work management desktop and web application",
   "author": "QUANTUM",
@@ -61,5 +61,14 @@
       "installerIcon": "assets/Qlogo.ico",
       "uninstallerIcon": "assets/Qlogo.ico"
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/socialization88-gif/CRM.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/socialization88-gif/CRM/issues"
+  },
+  "homepage": "https://github.com/socialization88-gif/CRM#readme"
 }

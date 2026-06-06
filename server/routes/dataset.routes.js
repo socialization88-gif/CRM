@@ -3,8 +3,11 @@ const express = require('express');
 function createDatasetRoutes(ctx) {
   const router = express.Router();
   with (ctx) {
+    const path = require('path');
+
     router.get('/task-report-feedback-source', (req, res) => {
-      const sourcePath = 'C:\\Users\\Uthoaingyo\\Downloads\\songogdan_with_input (1).html';
+      // Serve the embedded task report form from the public folder instead of a local Windows path
+      const sourcePath = path.join(rootDir, 'public', 'features', 'executive', 'songjogayon-form.html');
       res.sendFile(sourcePath, (error) => {
         if (error) {
           console.error('Task report feedback source error:', error);
@@ -12,13 +15,22 @@ function createDatasetRoutes(ctx) {
         }
       });
     });
-    
+
     router.get('/autosuggestion-source', (req, res) => {
-      const sourcePath = 'C:\\Users\\Uthoaingyo\\Downloads\\preview (15).html';
+      // Serve a public autosuggestion page (fallback to admin program form if dedicated file not present)
+      const candidate = path.join(rootDir, 'public', 'features', 'admin', 'program-form.html');
+      const fallback = path.join(rootDir, 'public', 'index.html');
+      const sourcePath = candidate;
       res.sendFile(sourcePath, (error) => {
         if (error) {
-          console.error('Autosuggestion source error:', error);
-          res.status(error.statusCode || 500).send('Autosuggestion source not available');
+          console.error('Autosuggestion source error (candidate):', error);
+          // fallback to index so admin still sees something
+          res.sendFile(fallback, (err2) => {
+            if (err2) {
+              console.error('Autosuggestion fallback error:', err2);
+              res.status(err2.statusCode || 500).send('Autosuggestion source not available');
+            }
+          });
         }
       });
     });

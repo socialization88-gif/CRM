@@ -22,6 +22,7 @@ async function loadBulkAssignExecutives() {
         bulkAssignExecutiveRows = executiveAccounts;
         renderFilterOptions();
         renderAccountExecutiveOptions();
+        renderSettingsExecutiveList();
         renderBulkAssignPanel();
         renderBulkSegments();
       } catch {
@@ -29,6 +30,7 @@ async function loadBulkAssignExecutives() {
         bulkAssignExecutiveRows = [];
         renderFilterOptions();
         renderAccountExecutiveOptions();
+        renderSettingsExecutiveList();
         renderBulkAssignPanel();
         renderBulkSegments();
       }
@@ -38,6 +40,30 @@ async function loadBulkAssignExecutives() {
       if (executiveAccounts.length) return executiveAccounts;
       if (bulkAssignExecutiveRows.length) return bulkAssignExecutiveRows;
       return accountRows.filter(user => String(user.role || '').toLowerCase() === 'executor');
+    }
+
+    function renderSettingsExecutiveList() {
+      const list = document.getElementById('settingsExecutiveList');
+      const count = document.getElementById('settingsExecutiveCount');
+      if (!list || !count) return;
+      const rows = bulkAssignExecutiveList();
+      count.textContent = `${rows.length} executive${rows.length === 1 ? '' : 's'}`;
+      if (!rows.length) {
+        list.innerHTML = '<div class="empty">No executive accounts found</div>';
+        return;
+      }
+      list.innerHTML = rows.map((executive) => {
+        const name = executive.name || executive.email || 'Executive';
+        const email = executive.email || '-';
+        const phone = executive.phone || executive.mobile || '';
+        return `<div class="settings-executive-row">
+          <img class="assignment-avatar" src="${attr(accountAvatarSvg(name))}" alt="">
+          <div class="settings-executive-info">
+            <b title="${attr(name)}">${esc(name)}</b>
+            <div class="muted" title="${attr([email, phone].filter(Boolean).join(' | '))}">${esc(email)}${phone ? ` | ${esc(phone)}` : ''}</div>
+          </div>
+        </div>`;
+      }).join('');
     }
 
     async function loadPermissions() {
@@ -1651,7 +1677,8 @@ async function loadBulkAssignExecutives() {
     function syncAccountTaskTabVisibility() {
       const tabBtn = document.getElementById('accountTabBtnTask');
       const tabPanel = document.getElementById('accountTabTask');
-      const showTasks = String(accountProfile?.role || '').toLowerCase() === 'executor';
+      const accountRole = String(accountProfile?.role || '').toLowerCase();
+      const showTasks = accountRole === 'executor' || accountRole === 'admin';
       if (tabBtn) tabBtn.style.display = showTasks ? 'inline-flex' : 'none';
       if (!showTasks && tabPanel) tabPanel.classList.remove('active');
       if (!showTasks && document.getElementById('accountTabBtnTask')?.classList.contains('active')) {
@@ -1663,9 +1690,10 @@ async function loadBulkAssignExecutives() {
       const list = document.getElementById('accountTaskList');
       const count = document.getElementById('accountTaskCount');
       if (!list || !count) return;
-      if (String(accountProfile?.role || '').toLowerCase() !== 'executor') {
+      const accountRole = String(accountProfile?.role || '').toLowerCase();
+      if (accountRole !== 'executor' && accountRole !== 'admin') {
         accountTaskRows = [];
-        list.innerHTML = '<div class="empty">Task list is available only for executive accounts.</div>';
+        list.innerHTML = '<div class="empty">Task list is available only for admin and executive accounts.</div>';
         count.textContent = '0 tasks';
         return;
       }
@@ -1680,16 +1708,16 @@ async function loadBulkAssignExecutives() {
         const status = String(task.task_status || 'Pending').trim() || 'Pending';
         const statusClass = /^(completed|handled)$/i.test(status) ? 'updated' : 'pending';
         const instruction = String(task.admin_instruction || '').trim();
-        return `<div class="history-item">
-          <div class="history-top">
-            <b>#${esc(task.row_number || index + 1)} ${esc(task.name || '-')}</b>
-            <span class="pill ${statusClass}">${esc(status)}</span>
+        const detail = [task.stage || 'Task', instruction].filter(Boolean).join(' | ');
+        const contact = [task.mobile ? `Mobile: ${task.mobile}` : '', task.email ? `Email: ${task.email}` : ''].filter(Boolean).join(' | ') || '-';
+        return `<div class="history-item account-task-item">
+          <div class="account-task-main" title="${attr(detail)}">
+            <b title="${attr(task.name || '-')}">#${esc(task.row_number || index + 1)} ${esc(task.name || '-')}</b>
+            <div class="muted">${esc(detail)}</div>
           </div>
-          <div class="muted">${esc(task.stage || 'Task')}</div>
-          <div class="muted">Assigned at: ${esc(assignedAt)}</div>
-          ${task.mobile ? `<div class="muted">Mobile: ${esc(task.mobile)}</div>` : ''}
-          ${task.email ? `<div class="muted">Email: ${esc(task.email)}</div>` : ''}
-          ${instruction ? `<div class="muted">${esc(instruction)}</div>` : ''}
+          <div class="muted account-task-date" title="${attr(assignedAt)}">Assigned at: ${esc(assignedAt)}</div>
+          <div class="muted account-task-contact" title="${attr(contact)}">${esc(contact)}</div>
+          <div class="account-task-status"><span class="pill ${statusClass}">${esc(status)}</span></div>
         </div>`;
       }).join('');
     }
@@ -1698,7 +1726,8 @@ async function loadBulkAssignExecutives() {
       const list = document.getElementById('accountTaskList');
       const count = document.getElementById('accountTaskCount');
       if (!list || !count || !accountProfile?.id) return;
-      if (String(accountProfile?.role || '').toLowerCase() !== 'executor') {
+      const accountRole = String(accountProfile?.role || '').toLowerCase();
+      if (accountRole !== 'executor' && accountRole !== 'admin') {
         accountTaskRows = [];
         renderAccountTaskList();
         return;
