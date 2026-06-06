@@ -36,8 +36,10 @@ const PERSONAL_TO_API = {
   present_address: 'Present Address',
   permanent_address: 'Permanent Address'
 };
-let token = localStorage.getItem('token') || '';
-let currentUser = parseJson(localStorage.getItem('user'), null);
+const AUTH_TOKEN_KEY = 'crm.session.token';
+const AUTH_USER_KEY = 'crm.session.user';
+let token = readSessionToken();
+let currentUser = readSessionUser();
 let rows = [];
 let selected = null;
 let selectedSnapshot = null;
@@ -765,6 +767,30 @@ let aiFabResetTimer = null;
 const API = resolveApiBase();
 
 function parseJson(raw, fallback) { try { return raw ? JSON.parse(raw) : fallback } catch { return fallback } }
+function clearLegacyAuthStorage() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+}
+function readSessionToken() {
+  clearLegacyAuthStorage();
+  return sessionStorage.getItem(AUTH_TOKEN_KEY) || '';
+}
+function readSessionUser() {
+  clearLegacyAuthStorage();
+  return parseJson(sessionStorage.getItem(AUTH_USER_KEY), null);
+}
+function writeSession(nextToken, nextUser) {
+  clearLegacyAuthStorage();
+  token = nextToken || '';
+  currentUser = nextUser || null;
+  if (token) sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+  else sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  if (currentUser) sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
+  else sessionStorage.removeItem(AUTH_USER_KEY);
+}
+function clearSession() {
+  writeSession('', null);
+}
 function resolveApiBase() { const configured = (window.API_BASE_URL || localStorage.getItem('apiBaseUrl') || '').trim(); return configured ? configured.replace(/\/+$/, '') : (window.location.protocol === 'file:' ? 'http://localhost:3000' : '') }
 function apiUrl(path) { return API + (path.startsWith('/') ? path : '/' + path) }
 function esc(v) { return String(v ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m])) }
@@ -978,6 +1004,9 @@ async function apiFetch(path, options = {}) {
   const text = await response.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {} } catch { throw new Error('Invalid server response') }
+  if (response.status === 401 && token && !String(path || '').includes('/api/auth/login')) {
+    clearSession();
+  }
   if (!response.ok || data.ok === false) throw new Error(data.message || 'Request failed');
   return data;
 }
@@ -1027,10 +1056,7 @@ async function loadLoginScreen() {
 async function login() {
   try {
     const data = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: document.getElementById('email').value.trim(), password: document.getElementById('password').value }) });
-    token = data.token;
-    currentUser = data.user;
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(currentUser));
+    writeSession(data.token, data.user);
     document.getElementById('topUserWrap').style.display = 'inline-flex';
     document.getElementById('topUserAvatar').src = accountImageSrc(currentUser);
     await boot();
@@ -1038,10 +1064,7 @@ async function login() {
 }
 
 function logout() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  token = '';
-  currentUser = null;
+  clearSession();
   rows = [];
   selected = null;
   aiChatMessages = [];
@@ -1072,8 +1095,7 @@ async function boot() {
   if (token) {
     try {
       const data = await apiFetch('/api/auth/me');
-      currentUser = data.user;
-      localStorage.setItem('user', JSON.stringify(currentUser));
+      writeSession(token, data.user);
     } catch { return logout() }
   }
   if (!currentUser) return logout();
@@ -1211,6 +1233,11 @@ window.addEventListener('resize', () => {
   };
   const taskReportState = {
     tab: 'form'
+  };
+  const assignNewTaskState = {
+    items: [],
+    formOpen: false,
+    editingId: '',
   };
   let selectedIndex = 0;
 
@@ -1650,6 +1677,235 @@ window.addEventListener('resize', () => {
     const buttonArea = document.querySelector('#taskReportPanel .button-area');
     if (buttonArea) buttonArea.style.display = taskReportState.tab === 'form' ? 'flex' : 'none';
     if (taskReportState.tab === 'feedback') ensureTaskReportFeedbackDefaults();
+    const activeFrame = document.querySelector(`#taskReportPanel [data-task-report-panel="${taskReportState.tab}"] iframe`);
+    if (activeFrame) setTimeout(() => resizeTaskReportFrame(activeFrame), 50);
+  }
+
+  function assignNewTaskStorageKey() {
+    return `crm.assignNewTask.${currentUser?.id || 'anonymous'}`;
+  }
+
+  window.resizeAssignNewTaskFrame = function resizeAssignNewTaskFrame(frame) {
+    try {
+      const doc = frame?.contentDocument || frame?.contentWindow?.document;
+      if (!doc?.body) return;
+      const height = Math.max(doc.body.scrollHeight || 0, doc.documentElement?.scrollHeight || 0, 720);
+      frame.style.height = `${height}px`;
+    } catch (_) { }
+  }
+
+  window.toggleAssignNewTaskForm = function toggleAssignNewTaskForm(force) {
+    const wrap = document.getElementById('assignNewTaskFormWrap');
+    const button = document.getElementById('assignNewTaskToggleBtn');
+    if (!wrap || !button) return;
+    const open = typeof force === 'boolean' ? force : wrap.style.display === 'none' || !wrap.style.display;
+    assignNewTaskState.formOpen = open;
+    wrap.style.display = open ? 'flex' : 'none';
+    document.body.style.overflow = open ? 'hidden' : '';
+    button.textContent = open ? 'Close' : '+ Add New';
+    if (open) {
+      const frame = document.getElementById('assignNewTaskFrame');
+      if (frame) {
+        window.resizeAssignNewTaskFrame(frame);
+        const item = assignNewTaskState.items.find((task) => String(task.id) === String(assignNewTaskState.editingId));
+        if (item?.id) {
+          setTimeout(() => {
+            frame.contentWindow?.postMessage({
+              type: 'crm:assign-new-task:prefill',
+              payload: {
+                mode: 'edit',
+                full_name: item.full_name || '',
+                email: item.email || '',
+                phone: item.phone || '',
+                advertisement: item.advertisement || '',
+                problem: item.problem || ''
+              }
+            }, window.location.origin);
+          }, 30);
+        }
+      }
+    } else {
+      assignNewTaskState.editingId = '';
+    }
+  }
+
+  function renderAssignNewTaskList(message = '') {
+    const list = document.getElementById('assignNewTaskList');
+    const count = document.getElementById('assignNewTaskCount');
+    if (!list || !count) return;
+    if (!assignNewTaskState.items.length) {
+      list.innerHTML = `<div class="empty">${esc(message || 'No task submitted yet')}</div>`;
+      count.textContent = '0 tasks';
+      return;
+    }
+    count.textContent = `${assignNewTaskState.items.length} task${assignNewTaskState.items.length === 1 ? '' : 's'}`;
+    list.innerHTML = assignNewTaskState.items.map((item, index) => `
+      <div class="assign-new-task-row">
+        <div class="assign-new-task-cell assign-new-task-cell-primary">
+          <b>#${esc(index + 1)} ${esc(item.full_name || '-')}</b>
+          <div class="muted">User | ${esc(item.email || 'No email')} | ${esc(item.phone || '-')}</div>
+        </div>
+        <div class="assign-new-task-cell">${esc(item.advertisement || 'Advertisement')}</div>
+        <div class="assign-new-task-cell">${esc(item.problem || '-')}</div>
+        <div class="assign-new-task-cell">${esc(formatDateTime(item.created_at || ''))}</div>
+        <div class="assign-new-task-cell assign-new-task-cell-actions">
+          <span class="pill pending">New</span>
+          <button type="button" class="assign-new-task-mini-btn" onclick="window.editAssignNewTaskItem('${esc(item.id || '')}')">Edit</button>
+          <button type="button" class="assign-new-task-mini-btn danger" onclick="window.removeAssignNewTaskItem('${esc(item.id || '')}')">Remove</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  window.loadAssignNewTaskList = async function loadAssignNewTaskList() {
+    if (currentUser?.role !== 'executor') return;
+    try {
+      const data = await apiFetch('/api/executor/assign-new-tasks');
+      assignNewTaskState.items = Array.isArray(data.tasks) ? data.tasks : [];
+      try {
+        localStorage.setItem(assignNewTaskStorageKey(), JSON.stringify(assignNewTaskState.items));
+      } catch (_) { }
+      renderAssignNewTaskList();
+    } catch (error) {
+      try {
+        assignNewTaskState.items = parseJson(localStorage.getItem(assignNewTaskStorageKey()), []) || [];
+      } catch (_) {
+        assignNewTaskState.items = [];
+      }
+      renderAssignNewTaskList(error.message || 'Task list load failed');
+    }
+  }
+
+  async function persistAssignNewTaskList(tasks) {
+    const payload = Array.isArray(tasks) ? tasks : [];
+    const data = await apiFetch('/api/executor/assign-new-tasks', {
+      method: 'PUT',
+      body: JSON.stringify({ tasks: payload })
+    });
+    assignNewTaskState.items = Array.isArray(data.tasks) ? data.tasks : payload;
+    try {
+      localStorage.setItem(assignNewTaskStorageKey(), JSON.stringify(assignNewTaskState.items));
+    } catch (_) { }
+    renderAssignNewTaskList();
+  }
+
+  function syncAssignNewTaskFrame(payload = {}, mode = 'create') {
+    const frame = document.getElementById('assignNewTaskFrame');
+    if (!frame?.contentWindow) return;
+    frame.contentWindow.postMessage({
+      type: mode === 'edit' ? 'crm:assign-new-task:prefill' : 'crm:assign-new-task:reset',
+      payload: mode === 'edit' ? { ...payload, mode } : undefined
+    }, window.location.origin);
+  }
+
+  window.editAssignNewTaskItem = function editAssignNewTaskItem(id) {
+    const item = assignNewTaskState.items.find((task) => String(task.id) === String(id));
+    if (!item) return;
+    assignNewTaskState.editingId = String(item.id || '');
+    window.toggleAssignNewTaskForm(true);
+    syncAssignNewTaskFrame({
+      full_name: item.full_name || '',
+      email: item.email || '',
+      phone: item.phone || '',
+      advertisement: item.advertisement || '',
+      problem: item.problem || ''
+    }, 'edit');
+  };
+
+  window.removeAssignNewTaskItem = async function removeAssignNewTaskItem(id) {
+    const itemId = String(id || '').trim();
+    if (!itemId) return;
+    const item = assignNewTaskState.items.find((task) => String(task.id) === itemId);
+    if (!item) return;
+    if (!window.confirm(`Remove task "${item.full_name || 'this item'}"?`)) return;
+    const next = assignNewTaskState.items.filter((task) => String(task.id) !== itemId);
+    try {
+      await persistAssignNewTaskList(next);
+      if (String(assignNewTaskState.editingId || '') === itemId) {
+        assignNewTaskState.editingId = '';
+        window.toggleAssignNewTaskForm(false);
+      }
+      renderAssignNewTaskList();
+      showToast('Task removed');
+    } catch (error) {
+      showToast(error.message || 'Remove failed');
+    }
+  };
+
+  window.submitAssignNewTask = async function submitAssignNewTask(payload = {}) {
+    if (currentUser?.role !== 'executor') return;
+    const fullName = String(payload.full_name || '').trim();
+    const email = String(payload.email || '').trim();
+    const phone = String(payload.phone || '').trim();
+    const advertisement = String(payload.advertisement || '').trim();
+    const problem = String(payload.problem || '').trim();
+    if (!fullName || !problem) {
+      showToast('Full name and problem are required');
+      return;
+    }
+    const now = new Date().toISOString();
+    const editingId = String(assignNewTaskState.editingId || '').trim();
+    const existing = editingId ? assignNewTaskState.items.find((task) => String(task.id) === editingId) : null;
+    const updatedTask = {
+      id: existing?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      full_name: fullName,
+      email,
+      phone,
+      advertisement,
+      problem,
+      created_at: existing?.created_at || now,
+      updated_at: now
+    };
+    const next = existing
+      ? assignNewTaskState.items.map((task) => String(task.id) === editingId ? updatedTask : task)
+      : [updatedTask, ...assignNewTaskState.items];
+    try {
+      await persistAssignNewTaskList(next);
+      window.toggleAssignNewTaskForm(false);
+      syncAssignNewTaskFrame({}, 'create');
+      try {
+        localStorage.setItem('crm.assignNewTask.updatedAt', String(Date.now()));
+      } catch (_) { }
+      showToast(existing ? 'Task updated' : 'New task added');
+    } catch (error) {
+      showToast(error.message || 'Task save failed');
+    }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    const data = event.data && typeof event.data === 'object' ? event.data : null;
+    if (!data) return;
+    if (data.type === 'crm:assign-new-task:submit') {
+      window.submitAssignNewTask(data.payload || {});
+    }
+    if (data.type === 'crm:assign-new-task:resize') {
+      const frame = document.getElementById('assignNewTaskFrame');
+      if (frame) frame.style.height = `${Math.max(Number(data.height) || 0, 720)}px`;
+    }
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && assignNewTaskState.formOpen) {
+      window.toggleAssignNewTaskForm(false);
+    }
+  });
+
+  function resizeTaskReportFrame(frame) {
+    if (!frame) return;
+    try {
+      const doc = frame.contentDocument || frame.contentWindow?.document;
+      if (!doc) return;
+      const height = Math.max(
+        doc.body?.scrollHeight || 0,
+        doc.documentElement?.scrollHeight || 0,
+        doc.body?.offsetHeight || 0,
+        doc.documentElement?.offsetHeight || 0
+      );
+      if (height > 0) frame.style.height = `${height}px`;
+    } catch (error) {
+      frame.style.height = 'calc(100vh - 175px)';
+    }
   }
 
   function renumberTaskReportTimeRows() {
@@ -1954,6 +2210,7 @@ window.addEventListener('resize', () => {
   window.renderTaskReport = renderTaskReport;
   window.renderTaskReportForm = renderTaskReportForm;
   window.setTaskReportTab = setTaskReportTab;
+  window.resizeTaskReportFrame = resizeTaskReportFrame;
   window.addTaskReportTime = addTaskReportTime;
   window.removeTaskReportTime = removeTaskReportTime;
   window.calculateTaskReportTotalTime = calculateTaskReportTotalTime;
@@ -2031,10 +2288,14 @@ ul.bullet li{margin-bottom:4px;}
 function switchView(view, options = {}) {
   const taskMode = view === 'task';
   const taskReportMode = view === 'taskReport' || view === 'task-report';
-  const actualView = taskMode ? 'records' : taskReportMode ? 'taskReport' : view;
+  const adminTaskMode = view === 'adminTask';
+  const assignNewTaskMode = view === 'assignNewTask';
+  const actualView = taskMode ? 'records' : taskReportMode ? 'taskReport' : assignNewTaskMode ? 'assignNewTask' : view;
   if (actualView === 'accounts' && currentUser?.role !== 'admin') return;
   if (actualView === 'programForm' && currentUser?.role !== 'admin') return;
   if (actualView === 'settings' && currentUser?.role !== 'admin') return;
+  if (actualView === 'adminTask' && currentUser?.role !== 'admin') return;
+  if (actualView === 'assignNewTask' && currentUser?.role !== 'executor') return;
   for (const el of document.querySelectorAll('.view')) el.classList.remove('active');
   for (const el of document.querySelectorAll('.side-btn')) el.classList.remove('active');
   const activeViewEl = document.getElementById(actualView + 'View');
@@ -2047,7 +2308,9 @@ function switchView(view, options = {}) {
     viewTitleEl.textContent = {
       overview: 'Overview',
       records: 'All Profile',
+      adminTask: 'Task',
       taskReport: 'Task report',
+      assignNewTask: 'Assign New Task',
       programForm: 'Program Form',
       autosuggestion: 'Autosuggestion',
       accounts: 'Community Connector',
@@ -2056,17 +2319,29 @@ function switchView(view, options = {}) {
     }[view] || 'Dashboard';
   }
   const hideRecordChrome = actualView === 'records' && !taskMode;
+  const hideTaskReportChrome = taskReportMode && currentUser?.role === 'executor';
+  const hideAssignNewTaskChrome = assignNewTaskMode && currentUser?.role === 'executor';
   if (viewTitleEl) viewTitleEl.style.display = hideRecordChrome ? 'none' : 'inline-block';
   const roleLabelEl = document.getElementById('roleLabel');
   if (roleLabelEl) roleLabelEl.style.display = hideRecordChrome ? 'none' : 'inline-block';
+  if (hideTaskReportChrome) {
+    if (viewTitleEl) viewTitleEl.style.display = 'none';
+    if (roleLabelEl) roleLabelEl.style.display = 'none';
+  }
+  if (hideAssignNewTaskChrome) {
+    if (viewTitleEl) viewTitleEl.style.display = 'none';
+    if (roleLabelEl) roleLabelEl.style.display = 'none';
+  }
   const recordSummaryEl = document.getElementById('recordSummary');
-  if (recordSummaryEl) recordSummaryEl.style.display = hideRecordChrome ? 'flex' : 'none';
+  if (recordSummaryEl) recordSummaryEl.style.display = hideRecordChrome && !adminTaskMode ? 'flex' : 'none';
   const taskSummaryPanelEl = document.getElementById('taskSummaryPanel');
   if (taskSummaryPanelEl) taskSummaryPanelEl.style.display = taskMode ? 'flex' : 'none';
   const taskReportPanelEl = document.getElementById('taskReportPanel');
   if (taskReportPanelEl) taskReportPanelEl.style.display = taskReportMode ? 'flex' : 'none';
+  const assignNewTaskPanelEl = document.getElementById('assignNewTaskPanel');
+  if (assignNewTaskPanelEl) assignNewTaskPanelEl.style.display = assignNewTaskMode ? 'flex' : 'none';
   const recordsShellEl = document.getElementById('recordsShell');
-  if (recordsShellEl) recordsShellEl.style.display = (taskMode || taskReportMode) ? 'none' : 'block';
+  if (recordsShellEl) recordsShellEl.style.display = (taskMode || taskReportMode) ? 'none' : 'flex';
   const recordsToolbarControlsEl = document.getElementById('recordsToolbarControls');
   if (recordsToolbarControlsEl) recordsToolbarControlsEl.style.display = hideRecordChrome ? 'inline-flex' : 'none';
   if (document.getElementById('bulkAssignToggleBtn')) document.getElementById('bulkAssignToggleBtn').style.display = hideRecordChrome && currentUser?.role === 'admin' ? 'inline-block' : 'none';
@@ -2090,6 +2365,7 @@ function switchView(view, options = {}) {
     }
   }
   if (view === 'accounts' && currentUser?.role === 'admin') { loadCommunicationConnectors(); renderCommunityConnectorCard(); }
+  if (view === 'adminTask' && currentUser?.role === 'admin' && typeof window.loadAdminTaskRows === 'function') window.loadAdminTaskRows();
   if (taskMode || (actualView === 'records' && !options.skipLoad)) loadRecords(true);
   if (view === 'settings') { loadProgramSettings(); loadPermissions(); loadAiSettings(); loadCommunicationConnectors(); }
   if (view === 'autosuggestion') { setTimeout(bindAutosuggestionSourceFrame, 0); }
@@ -2098,6 +2374,13 @@ function switchView(view, options = {}) {
   }
   if (taskMode && typeof window.renderTaskReport === 'function') window.renderTaskReport();
   if (taskReportMode && typeof window.renderTaskReportForm === 'function') window.renderTaskReportForm();
+  if (assignNewTaskMode) {
+    if (typeof window.loadAssignNewTaskList === 'function') window.loadAssignNewTaskList();
+    if (typeof window.toggleAssignNewTaskForm === 'function') window.toggleAssignNewTaskForm(false);
+    const frame = document.getElementById('assignNewTaskFrame');
+    if (frame) setTimeout(() => window.resizeAssignNewTaskFrame && window.resizeAssignNewTaskFrame(frame), 50);
+  }
+  if (adminTaskMode && typeof window.setAdminTaskTab === 'function') window.setAdminTaskTab(window.adminTaskState?.tab || 'assign');
 }
 
 function openSettingsSection(sectionId) {
@@ -2571,9 +2854,10 @@ function renderRows() {
     const age = row.age || calculateAgeFromDob(row.date_of_birth);
     const profession = row.profession || row.occupation || '-';
     const email = row.email || 'No email';
+    const avatarSrc = accountAvatarSvg(row.name || row.email || 'Profile');
     const selectedBulk = bulkAssignMode && bulkAssignRowIds.has(String(row.id));
     return `<tr class="${selectedBulk ? 'bulk-selected' : ''}" onclick="openProfile('${attr(row.id)}')" ondblclick="openProfile('${attr(row.id)}')" style="cursor:pointer">
-  <td><div class="profile-cell">${bulkAssignMode && currentUser?.role === 'admin' ? `<label class="row-select-cell"><input type="checkbox" onclick="event.stopPropagation()" ${selectedBulk ? 'checked' : ''} onchange="toggleBulkRowSelection('${attr(row.id)}', this.checked)"></label>` : ''}<div><b>${esc(row.name || '-')}</b><div class="muted">${esc(classification)} | ${esc(profession)} | Age ${esc(age || '-')}</div></div></div></td>
+  <td><div class="profile-cell">${bulkAssignMode && currentUser?.role === 'admin' ? `<label class="row-select-cell"><input type="checkbox" onclick="event.stopPropagation()" ${selectedBulk ? 'checked' : ''} onchange="toggleBulkRowSelection('${attr(row.id)}', this.checked)"></label>` : ''}<img class="profile-row-avatar" src="${attr(avatarSrc)}" alt="${attr(row.name || 'Profile')}"><div class="profile-row-meta"><b>${esc(row.name || '-')}</b><div class="muted">${esc(classification)} | ${esc(profession)} | Age ${esc(age || '-')}</div></div></div></td>
   <td><div>${esc(row.mobile || '-')}</div><div class="muted">${esc(email)} | ${esc(row.location || row.present_address || '-')}</div></td>
   <td>${esc(row.problem || '-')}</td>
   <td>${esc(row.stage || '-')}</td>
@@ -2696,11 +2980,21 @@ async function openProfile(id) {
   profileHistoryOpen = false;
   document.getElementById('profileModal').style.display = 'flex';
   document.getElementById('profileModal').classList.add('profile-readonly');
-  document.getElementById('profileModalAvatar').src = accountAvatarSvg(selected.name || selected.email || 'Profile');
-  document.getElementById('modalTitle').textContent = selected.name || 'Profile';
-  document.getElementById('pName').textContent = selected.name || '-';
+  const displayName = selected.full_name || selected.name || 'Profile';
+  document.getElementById('profileModalAvatar').src = accountAvatarSvg(displayName || selected.email || 'Profile');
+  const profileName = displayName || 'Profile';
+  const profileRole = selected.profile_classification || 'User';
+  const profileRowNumber = selected.row_number || '-';
+  const profileMobile = selected.mobile || '-';
+  if (document.getElementById('profileName')) document.getElementById('profileName').textContent = profileName;
+  if (document.getElementById('profileType')) document.getElementById('profileType').textContent = profileRole;
+  if (document.getElementById('profileId')) document.getElementById('profileId').textContent = String(selected.id || '-');
+  if (document.getElementById('profileRow')) document.getElementById('profileRow').textContent = String(profileRowNumber);
+  if (document.getElementById('mobileNumber')) document.getElementById('mobileNumber').textContent = profileMobile;
+  document.getElementById('modalTitle').textContent = profileName;
+  document.getElementById('pName').textContent = profileName || '-';
   document.getElementById('pId').textContent = `ID: ${selected.id} | Row: ${selected.row_number}`;
-  document.getElementById('pImg').src = accountAvatarSvg(selected.name || selected.email || 'Profile');
+  document.getElementById('pImg').src = accountAvatarSvg(displayName || selected.email || 'Profile');
   document.getElementById('profileClass').textContent = selected.profile_classification || 'User';
   document.getElementById('callMobile').href = selected.mobile ? 'tel:' + selected.mobile : '#';
   document.getElementById('editStage').value = CALL_STAGES.includes(selected.stage) ? selected.stage : 'Interested';
@@ -2757,6 +3051,27 @@ function fillPersonalForm() {
   }
   document.getElementById('profileClassification').value = selected.profile_classification || 'User';
   renderPhoneNumberRows('profilePhoneNumbers', phoneNumbers, 'profile', isProfileEditable() && canEditPersonal());
+  syncProfileReadonlyData(values, phoneNumbers);
+}
+
+function setProfileReadonlyText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value && String(value).trim() ? String(value).trim() : '-';
+}
+
+function syncProfileReadonlyData(values = {}, phoneNumbers = []) {
+  setProfileReadonlyText('fullNameValue', values.full_name || selected?.name || '-');
+  setProfileReadonlyText('emailValue', values.email || '-');
+  setProfileReadonlyText('mobileValue', values.mobile || '-');
+  setProfileReadonlyText('rowValue', selected?.row_number || '-');
+  setProfileReadonlyText('additionalPhoneValue', phoneNumbers.length ? phoneNumbers.join(', ') : 'No additional phone numbers.');
+  setProfileReadonlyText('dobValue', values.date_of_birth || '-');
+  setProfileReadonlyText('maritalValue', values.marital_status || '-');
+  setProfileReadonlyText('bloodValue', values.blood_group || '-');
+  setProfileReadonlyText('occupationValue', values.occupation || '-');
+  setProfileReadonlyText('systemValue', selected?.profile_classification || 'User');
+  setProfileReadonlyText('presentAddressValue', values.present_address || '-');
+  setProfileReadonlyText('permanentAddressValue', values.permanent_address || '-');
 }
 
 function addPhoneNumber() {
@@ -2816,7 +3131,8 @@ function applyProfilePermissions() {
   const assignButton = document.getElementById('profileAssignBtn');
   if (assignButton) assignButton.disabled = currentUser?.role !== 'admin' || !String(document.getElementById('profileExecutive')?.value || '').trim();
   document.getElementById('profileClassification').disabled = profileLocked || currentUser?.role !== 'admin';
-  document.getElementById('uploadBtn').disabled = personalLocked;
+  const uploadBtn = document.getElementById('uploadBtn');
+  if (uploadBtn) uploadBtn.disabled = personalLocked;
   const customBtn = document.getElementById('addCustomFieldBtn');
   if (customBtn) customBtn.disabled = personalLocked;
   const familyBtn = document.getElementById('addFamilyBtn');
@@ -2844,6 +3160,12 @@ function renderCustomFields() {
 <input data-custom-value value="${attr(value)}" placeholder="Field value">
 <button class="danger" onclick="removeCustomField(${index})">Remove</button>
   </div>`).join('') || '<div class="muted">No custom fields yet.</div>';
+  const readonlyList = document.getElementById('customList');
+  if (readonlyList) {
+    readonlyList.innerHTML = entries.length
+      ? entries.map(([key, value]) => `<div class="data-row"><div class="label">${esc(key)}</div><div class="value">${esc(value || '-')}</div></div>`).join('')
+      : '<div class="data-row"><div class="label">Custom Note</div><div class="value">No custom fields yet.</div></div>';
+  }
   applyProfilePermissions();
 }
 
@@ -2960,6 +3282,14 @@ function renderFamilyInfo() {
   setFamilyMembers(members);
   const editable = isProfileEditable() && canEditPersonal();
   document.getElementById('familyGrid').innerHTML = members.map((member, index) => renderFamilyMemberCard(member, index, editable, 'profile')).join('') || '<div class="muted">No family members added.</div>';
+  const father = members.find(member => String(member.relationship || '').toLowerCase() === 'father') || {};
+  const mother = members.find(member => String(member.relationship || '').toLowerCase() === 'mother') || {};
+  const guardian = members.find(member => String(member.mobile || '').trim()) || father || mother || {};
+  const familyAddress = selected?.present_address || selected?.permanent_address || selected?.location || '';
+  setProfileReadonlyText('familyFatherValue', father.full_name || selected?.father_name || '-');
+  setProfileReadonlyText('familyMotherValue', mother.full_name || selected?.mother_name || '-');
+  setProfileReadonlyText('familyGuardianPhoneValue', guardian.mobile || selected?.mobile || '-');
+  setProfileReadonlyText('familyAddressValue', familyAddress || '-');
   applyProfilePermissions();
 }
 
@@ -3045,6 +3375,12 @@ function renderAttendance() {
 <span class="muted">${esc(formatDateTime(item.timestamp))}</span>
 <button class="danger" onclick="removeAttendance(${index})">Remove</button>
   </div>`).join('') || '<div class="muted">No attendance history yet.</div>';
+  const latest = selected.attendance_history[selected.attendance_history.length - 1] || null;
+  const firstProgram = Object.keys(counts)[0] || 'Not added';
+  setProfileReadonlyText('programNameValue', firstProgram);
+  setProfileReadonlyText('attendancePercentValue', selected.attendance_history.length ? `${selected.attendance_history.length} records` : '0%');
+  setProfileReadonlyText('lastJoinValue', latest?.timestamp ? formatDateTime(latest.timestamp) : '-');
+  setProfileReadonlyText('programStatusValue', selected?.stage || 'Pending');
   applyProfilePermissions();
 }
 
@@ -3119,6 +3455,18 @@ function closeProfile() {
   document.getElementById('profileModal').style.display = 'none';
   document.getElementById('profileModal').classList.remove('profile-readonly');
   document.getElementById('profileModalAvatar').src = accountAvatarSvg('Profile');
+  if (document.getElementById('profileName')) document.getElementById('profileName').textContent = 'Profile';
+  if (document.getElementById('profileType')) document.getElementById('profileType').textContent = 'User';
+  if (document.getElementById('profileId')) document.getElementById('profileId').textContent = '-';
+  if (document.getElementById('profileRow')) document.getElementById('profileRow').textContent = '-';
+  if (document.getElementById('mobileNumber')) document.getElementById('mobileNumber').textContent = '-';
+  if (document.getElementById('modalTitle')) document.getElementById('modalTitle').textContent = 'Profile';
+  if (document.getElementById('pName')) document.getElementById('pName').textContent = '-';
+  if (document.getElementById('pId')) document.getElementById('pId').textContent = '-';
+  if (document.getElementById('profileClass')) document.getElementById('profileClass').textContent = 'User';
+  ['fullNameValue', 'emailValue', 'mobileValue', 'rowValue', 'additionalPhoneValue', 'dobValue', 'maritalValue', 'bloodValue', 'occupationValue', 'systemValue', 'presentAddressValue', 'permanentAddressValue', 'familyFatherValue', 'familyMotherValue', 'familyGuardianPhoneValue', 'familyAddressValue', 'programNameValue', 'attendancePercentValue', 'lastJoinValue', 'programStatusValue'].forEach(id => setProfileReadonlyText(id, '-'));
+  const customList = document.getElementById('customList');
+  if (customList) customList.innerHTML = '<div class="data-row"><div class="label">Custom Note</div><div class="value">No custom fields yet.</div></div>';
   selected = null;
   selectedSnapshot = null;
   profileEditMode = false;
@@ -3199,11 +3547,10 @@ async function loadHistory(rowId) {
     const data = await apiFetch('/api/dataset-rows/' + encodeURIComponent(rowId) + '/history');
     renderHistory(data.history || []);
   } catch (error) {
-    const message = `<div class="empty">${esc(error.message || 'History failed')}</div>`;
-    const callList = document.getElementById('profileCallHistoryList');
-    const changeList = document.getElementById('profileChangeHistoryList');
-    if (callList) callList.innerHTML = message;
-    if (changeList) changeList.innerHTML = message;
+    const table = document.getElementById('profileFollowTable');
+    if (table) table.innerHTML = `<tr><td colspan="5"><div class="empty">${esc(error.message || 'History failed')}</div></td></tr>`;
+    const total = document.getElementById('profileHistoryTotal');
+    if (total) total.textContent = 'Total 0 records';
   }
 }
 
@@ -3241,7 +3588,35 @@ function renderHistorySections(history, callListId, changeListId, removable = fa
 }
 
 function renderHistory(history) {
-  renderHistorySections(history, 'profileCallHistoryList', 'profileChangeHistoryList', true);
+  const table = document.getElementById('profileFollowTable');
+  const total = document.getElementById('profileHistoryTotal');
+  if (!table) return;
+  const entries = Array.isArray(history) ? history : [];
+  if (!entries.length) {
+    table.innerHTML = '<tr><td colspan="5"><div class="empty">No follow up history yet</div></td></tr>';
+    if (total) total.textContent = 'Total 0 records';
+    return;
+  }
+  table.innerHTML = entries.map((item, index) => {
+    const changes = Object.entries(item.changes || {}).map(([field, change]) => `${field}: ${formatChangeValue(change.from)} -> ${formatChangeValue(change.to)}`).join('; ');
+    const comment = changes || item.notes || 'No details';
+    const feedback = item.actor_name ? `${item.actor_name}${item.actor_role ? ` (${roleName(item.actor_role)})` : ''}` : (item.notes || '-');
+    const remove = removableHistoryAction(item);
+    return `<tr>
+      <td>${index + 1}</td>
+      <td>${esc(formatDateTime(item.created_at) || '-')}</td>
+      <td>${esc(comment)}</td>
+      <td class="feedback-cell">${esc(feedback)}</td>
+      <td>${remove}</td>
+    </tr>`;
+  }).join('');
+  if (total) total.textContent = `Total ${entries.length} records`;
+}
+
+function removableHistoryAction(item) {
+  return currentUser?.role === 'admin' && item.id
+    ? `<button class="edit-btn" title="Remove" aria-label="Remove" onclick="removeHistory('${attr(item.id)}')">×</button>`
+    : '-';
 }
 
 async function removeHistory(eventId) {
@@ -3264,11 +3639,10 @@ async function clearHistory() {
 }
 
 function toggleProfileHistory(force) {
-  profileHistoryOpen = typeof force === 'boolean' ? force : !profileHistoryOpen;
-  const section = document.getElementById('profileHistorySection');
   const button = document.getElementById('profileHistoryBtn');
-  if (section) section.style.display = profileHistoryOpen ? 'block' : 'none';
-  if (button) button.textContent = profileHistoryOpen ? 'Hide History' : 'History';
+  profileHistoryOpen = typeof force === 'boolean' ? force : true;
+  if (button) button.textContent = 'History';
+  if (profileHistoryOpen) switchProfileTab('follow');
 }
 
 async function loadUsers() {
@@ -4009,8 +4383,7 @@ async function saveAccountProfile() {
     setAccountProfileEditMode(false);
     renderUsers();
     if (currentUser && String(currentUser.id) === String(updated.id)) {
-      currentUser = { ...currentUser, ...updated };
-      localStorage.setItem('user', JSON.stringify(currentUser));
+      writeSession(token, { ...currentUser, ...updated });
       document.getElementById('topUser').textContent = `${currentUser.name} (${roleName(currentUser.role)})`;
       document.getElementById('roleLabel').textContent = `${currentUser.name} (${roleName(currentUser.role)})`;
     }
@@ -4225,6 +4598,16 @@ function closeCommunicationConnectorModal() {
   const modal = document.getElementById('communicationConnectorModal');
   if (modal) modal.style.display = 'none';
   communicationConnectorViewIndex = -1;
+}
+
+function openCommunicationConnectorForm() {
+  const modal = document.getElementById('connectorAccountModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeCommunicationConnectorForm() {
+  const modal = document.getElementById('connectorAccountModal');
+  if (modal) modal.style.display = 'none';
 }
 
 function openCommunicationConnectorUrl() {

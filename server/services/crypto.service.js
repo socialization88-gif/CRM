@@ -4,15 +4,24 @@ const bcrypt = require('bcrypt');
 function base64url(input) { return Buffer.from(input).toString('base64url'); }
 function appSecret() { return process.env.APP_SECRET || process.env.DATABASE_URL || 'quantum-work-management-local-secret'; }
 function signPayload(payload) { return crypto.createHmac('sha256', appSecret()).update(payload).digest('base64url'); }
-function makeToken(user, ttlSeconds = 60 * 60 * 12) {
+function makeToken(user, ttlSeconds = Number(process.env.TOKEN_TTL_SECONDS || 60 * 60 * 4)) {
   const payload = base64url(JSON.stringify({ sub: user.id, role: user.role, exp: Math.floor(Date.now() / 1000) + ttlSeconds }));
   return payload + '.' + signPayload(payload);
+}
+function signaturesMatch(actual, expected) {
+  try {
+    const actualBuffer = Buffer.from(String(actual || ''), 'base64url');
+    const expectedBuffer = Buffer.from(String(expected || ''), 'base64url');
+    return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+  } catch {
+    return false;
+  }
 }
 function readTokenPayload(req) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   const [payload, signature] = token.split('.');
-  if (!payload || !signature || signPayload(payload) !== signature) return null;
+  if (!payload || !signature || !signaturesMatch(signature, signPayload(payload))) return null;
   try {
     const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (!parsed.exp || parsed.exp < Math.floor(Date.now() / 1000)) return null;

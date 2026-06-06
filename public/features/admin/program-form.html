@@ -1004,10 +1004,11 @@ function enterPublicRegistrationMode(){
 }
 
 function getAuthToken(){
+  const tokenKey="crm.session.token";
   try{
-    return localStorage.getItem("token") || parent.localStorage.getItem("token") || "";
+    return sessionStorage.getItem(tokenKey) || parent.sessionStorage.getItem(tokenKey) || "";
   }catch{
-    return localStorage.getItem("token") || "";
+    return sessionStorage.getItem(tokenKey) || "";
   }
 }
 

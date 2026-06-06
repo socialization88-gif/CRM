@@ -8,7 +8,8 @@
   <link rel="icon" type="image/png" href="/assets/Qlogo.png" />
   <link rel="apple-touch-icon" href="/assets/Qlogo.png" />
   <link rel="stylesheet" href="/styles/features/admin.css" />
-  <link rel="stylesheet" href="/styles/core/app.css" />
+  <link rel="stylesheet" href="/styles/core/app.css" />
+
 </head>
 
 <body class="login-mode">
@@ -35,8 +36,10 @@
       <button class="side-btn" id="navOverview" onclick="switchView('overview')">Overview</button>
       <button class="side-btn" id="navRecords" onclick="switchView('records')">All Profiles</button>
       <button class="side-btn admin-only" id="navAccounts" onclick="switchView('accounts')">Community Connector</button>
+      <button class="side-btn admin-only" id="navAdminTask" onclick="switchView('adminTask')">Task</button>
       <button class="side-btn" id="navTask" onclick="switchView('task')">C & A Summary</button>
       <button class="side-btn executor-only" id="navTaskReport" onclick="switchView('taskReport')">Task report</button>
+      <button class="side-btn executor-only" id="navAssignNewTask" onclick="switchView('assignNewTask')">Assign New Task</button>
 
       <button class="side-btn admin-only" id="navProgramForm" onclick="switchView('programForm')">Program
         Form</button>
@@ -60,7 +63,7 @@
         <input id="recordSearch" class="title-search toolbar-search" placeholder="Search name, mobile, or location"
           oninput="debouncedSearch()" style="display:none">
         <button id="filterBtn" onclick="toggleFilters()" style="display:none">Filters</button>
-        <div class="toolbar-record-controls" id="recordsToolbarControls">
+        <div class="toolbar-record-controls" id="r-ecordsToolbarControls">
           <button onclick="refreshRecords()" aria-label="Refresh records" title="Refresh records">
             <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -424,32 +427,124 @@
         </section>
       </section>
 
+      <section id="adminTaskView" class="view admin-only block" style="padding:0;">
+        <section id="adminTaskPanel" class="panel"
+          style="padding:1.25rem;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;box-sizing:border-box;min-height:calc(100% - 1rem);">
+          <div class="admin-task-shell">
+            <div class="admin-task-top">
+              <div class="admin-task-tabs">
+                <button type="button" class="active" data-admin-task-tab="assign"
+                  onclick="setAdminTaskTab('assign')">Assign Task</button>
+                <button type="button" data-admin-task-tab="followup" onclick="setAdminTaskTab('followup')">Follow
+                  Up</button>
+              </div>
+              <div class="admin-task-tools">
+                <input id="adminTaskSearch" class="title-search toolbar-search"
+                  placeholder="Search name, mobile, problem, stage" oninput="debouncedAdminTaskSearch()">
+                <button type="button" onclick="loadAdminTaskRows()" aria-label="Refresh task list"
+                  title="Refresh task list">↻</button>
+              </div>
+            </div>
+
+            <div class="admin-task-tab-panel" data-admin-task-panel="assign">
+              <div class="table-scroll admin-task-table-scroll">
+                <table class="admin-task-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Contact</th>
+                      <th>Advertisement</th>
+                      <th>Problem</th>
+                      <th>Submitted</th>
+                      <th>From</th>
+                    </tr>
+                  </thead>
+                  <tbody id="adminTaskAssignBody">
+                    <tr>
+                      <td colspan="6">
+                        <div class="empty">Loading task list...</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="admin-task-tab-panel" data-admin-task-panel="followup" style="display:none">
+              <iframe class="admin-task-followup-frame" src="/features/admin/task-followup.html"
+                title="Follow Up"></iframe>
+            </div>
+          </div>
+        </section>
+      </section>
+
       <section id="taskReportView" class="view executor-only block">
         <section id="taskReportPanel" class="panel"
           style="padding:1.5rem;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;box-sizing:border-box;min-height:calc(100% - 1.5rem);">
           <div class="task-report-shell">
             <div class="task-report-top">
-              <div>
-                <h2 class="task-report-title">Task report</h2>
-              </div>
               <div class="task-report-tabs">
-                <button type="button" class="active" data-task-report-tab="form" onclick="setTaskReportTab('form')">Task form</button>
-                <button type="button" data-task-report-tab="feedback" onclick="setTaskReportTab('feedback')">Feedback</button>
+                <button type="button" class="active" data-task-report-tab="form" onclick="setTaskReportTab('form')">Task
+                  form</button>
+                <button type="button" data-task-report-tab="feedback"
+                  onclick="setTaskReportTab('feedback')">Feedback</button>
               </div>
             </div>
 
             <form id="taskReportForm" class="task-report-embed-form" onsubmit="submitTaskReportForm(event)">
               <div class="task-report-tab-panel" data-task-report-panel="form">
-                <iframe class="task-report-form-frame" id="taskReportFormFrame"
+                <iframe class="task-report-form-frame" id="taskReportFormFrame" scrolling="no"
+                  onload="window.resizeTaskReportFrame&&resizeTaskReportFrame(this)"
                   src="/features/executive/songjogayon-form.html" title="Task report form"></iframe>
               </div>
 
               <div class="task-report-tab-panel task-report-empty-panel" data-task-report-panel="feedback"
                 style="display:none">
-                <iframe class="task-report-feedback-frame" id="taskReportFeedbackFrame"
-                  src="/task-report-feedback-source" title="Task report feedback"></iframe>
+                <iframe class="task-report-feedback-frame" id="taskReportFeedbackFrame" scrolling="no"
+                  onload="window.resizeTaskReportFrame&&resizeTaskReportFrame(this)" src="/task-report-feedback-source"
+                  title="Task report feedback"></iframe>
               </div>
             </form>
+          </div>
+        </section>
+      </section>
+
+      <section id="assignNewTaskView" class="view executor-only block">
+        <section id="assignNewTaskPanel" class="panel assign-new-task-panel">
+          <div class="assign-new-task-shell">
+            <div class="assign-new-task-top">
+              <div>
+                <div class="panel-title">Assign New Task</div>
+                <div class="muted">Create a new task from the provided form and keep the submitted data listed here.</div>
+              </div>
+              <button type="button" class="primary assign-new-task-toggle-btn" id="assignNewTaskToggleBtn"
+                onclick="window.toggleAssignNewTaskForm&&window.toggleAssignNewTaskForm()">+ Add New</button>
+            </div>
+
+            <div id="assignNewTaskFormWrap" class="assign-new-task-form-wrap" style="display:none;"
+              onclick="if(event.target===this&&window.toggleAssignNewTaskForm)window.toggleAssignNewTaskForm(false)">
+              <div class="assign-new-task-modal-card">
+                <div class="assign-new-task-modal-head">
+                  <div>
+                    <div class="label">Add New Task</div>
+                    <div class="muted">Fill in the form and submit.</div>
+                  </div>
+                  <button type="button" class="assign-new-task-modal-close"
+                    onclick="window.toggleAssignNewTaskForm&&window.toggleAssignNewTaskForm(false)">Close</button>
+                </div>
+                <iframe id="assignNewTaskFrame" class="assign-new-task-frame" scrolling="no"
+                  onload="window.resizeAssignNewTaskFrame&&window.resizeAssignNewTaskFrame(this)"
+                  src="/features/executive/assign-new-task-form.html" title="Assign new task form"></iframe>
+              </div>
+            </div>
+
+            <div class="assign-new-task-list-wrap">
+              <div class="history-top">
+                <div class="label">Submitted Task List</div>
+                <div class="muted" id="assignNewTaskCount">0 tasks</div>
+              </div>
+              <div class="history-list" id="assignNewTaskList"></div>
+            </div>
           </div>
         </section>
       </section>
@@ -461,7 +556,7 @@
               <div class="connector-card-header">
                 <h1>Connectors</h1>
                 <div class="header-buttons">
-                  <button type="button" class="btn" onclick="openSettingsSection('communicationConnector')">+</button>
+                  <button type="button" class="btn" onclick="openCommunicationConnectorForm()">+</button>
                   <button type="button" class="btn square" onclick="renderCommunityConnectorCard()">↻</button>
                 </div>
               </div>
@@ -798,6 +893,17 @@
     </div>
   </div>
 
+  <div class="modal-back" id="connectorAccountModal" style="display:none; z-index:3200;">
+    <div class="modal" style="width:min(460px, 94vw); max-height:92vh;">
+      <div class="modal-head">
+        <b>Create New Connector Account</b>
+        <button type="button" onclick="closeCommunicationConnectorForm()">Close</button>
+      </div>
+      <iframe src="/features/admin/connector-account-form.html" title="Create Connector Account"
+        style="width:100%; height:min(78vh,760px); border:0; display:block; background:#f4f7fc;"></iframe>
+    </div>
+  </div>
+
   <div id="adminFragments"></div>
 
   <div class="toast" id="toast"></div>
@@ -807,4 +913,3 @@
 </body>
 
 </html>
-

@@ -139,6 +139,16 @@ function createContext({ pool, rootDir, env }) {
   function signPayload(payload) {
     return crypto.createHmac('sha256', appSecret()).update(payload).digest('base64url');
   }
+
+  function signaturesMatch(actual, expected) {
+    try {
+      const actualBuffer = Buffer.from(String(actual || ''), 'base64url');
+      const expectedBuffer = Buffer.from(String(expected || ''), 'base64url');
+      return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+    } catch {
+      return false;
+    }
+  }
   
   function makeToken(user) {
     const payload = base64url(JSON.stringify({
@@ -153,7 +163,7 @@ function createContext({ pool, rootDir, env }) {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const [payload, signature] = token.split('.');
-    if (!payload || !signature || signPayload(payload) !== signature) return null;
+    if (!payload || !signature || !signaturesMatch(signature, signPayload(payload))) return null;
     try {
       const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
       if (!parsed.exp || parsed.exp < Math.floor(Date.now() / 1000)) return null;

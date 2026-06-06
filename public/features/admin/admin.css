@@ -95,12 +95,12 @@ body.is-admin .view.admin-only.active {
   transition: .16s;
 }
 
-.switch input:checked + span {
+.switch input:checked+span {
   background: rgba(70, 211, 105, .28);
   border-color: var(--green);
 }
 
-.switch input:checked + span:before {
+.switch input:checked+span:before {
   left: 25px;
   background: var(--green);
 }

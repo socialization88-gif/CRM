@@ -1885,7 +1885,7 @@ async function loadBulkAssignExecutives() {
         renderUsers();
         if (currentUser && String(currentUser.id) === String(updated.id)) {
           currentUser = { ...currentUser, ...updated };
-          localStorage.setItem('user', JSON.stringify(currentUser));
+          if (typeof writeSession === 'function') writeSession(token, currentUser);
           document.getElementById('topUser').textContent = `${currentUser.name} (${roleName(currentUser.role)})`;
           document.getElementById('roleLabel').textContent = `${currentUser.name} (${roleName(currentUser.role)})`;
         }

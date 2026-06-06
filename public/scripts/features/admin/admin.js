@@ -12,6 +12,102 @@
 })();
 
 let accountTaskRows = [];
+let accountNewTaskRows = [];
+let adminTaskRows = [];
+let adminTaskRowsLoaded = false;
+let adminTaskRowsLoading = false;
+window.adminTaskState = window.adminTaskState || { tab: 'assign', search: '' };
+
+function adminTaskMatchesSearch(row, search) {
+  const text = [
+    row.name,
+    row.mobile,
+    row.email,
+    row.phone,
+    row.executor_name,
+    row.executor_email,
+    row.advertisement,
+    row.problem,
+    row.created_at,
+  ].map(value => String(value || '').toLowerCase()).join(' | ');
+  return !search || text.includes(search);
+}
+
+function debouncedAdminTaskSearch() {
+  clearTimeout(debouncedAdminTaskSearch.timer);
+  debouncedAdminTaskSearch.timer = setTimeout(() => {
+    window.adminTaskState.search = String(document.getElementById('adminTaskSearch')?.value || '').trim().toLowerCase();
+    renderAdminTaskAssignRows();
+  }, 220);
+}
+
+function setAdminTaskTab(tab) {
+  window.adminTaskState.tab = tab === 'followup' ? 'followup' : 'assign';
+  const buttons = document.querySelectorAll('#adminTaskPanel [data-admin-task-tab]');
+  buttons.forEach((button) => {
+    button.classList.toggle('active', button.dataset.adminTaskTab === window.adminTaskState.tab);
+  });
+  const panels = document.querySelectorAll('#adminTaskPanel [data-admin-task-panel]');
+  panels.forEach((panel) => {
+    panel.style.display = panel.dataset.adminTaskPanel === window.adminTaskState.tab ? 'grid' : 'none';
+  });
+  if (window.adminTaskState.tab === 'assign' && !adminTaskRows.length && !adminTaskRowsLoaded && !adminTaskRowsLoading) {
+    loadAdminTaskRows().catch(() => null);
+  }
+}
+
+async function loadAdminTaskRows() {
+  if (currentUser?.role !== 'admin') return;
+  if (adminTaskRowsLoading) return;
+  adminTaskRowsLoading = true;
+  try {
+    const data = await apiFetch('/api/admin/assign-new-tasks');
+    adminTaskRows = Array.isArray(data.tasks) ? data.tasks : [];
+    adminTaskRowsLoaded = true;
+    renderAdminTaskAssignRows();
+  } catch (error) {
+    adminTaskRows = [];
+    adminTaskRowsLoaded = false;
+    const body = document.getElementById('adminTaskAssignBody');
+    if (body) body.innerHTML = `<tr><td colspan="6"><div class="empty">${esc(error.message || 'Task list failed')}</div></td></tr>`;
+  } finally {
+    adminTaskRowsLoading = false;
+  }
+}
+
+function renderAdminTaskAssignRows() {
+  const body = document.getElementById('adminTaskAssignBody');
+  if (!body) return;
+  const search = String(window.adminTaskState.search || '').toLowerCase();
+  const filtered = adminTaskRows.filter((row) => adminTaskMatchesSearch(row, search));
+  if (!filtered.length) {
+    body.innerHTML = '<tr><td colspan="6"><div class="empty">No task records found</div></td></tr>';
+    return;
+  }
+  body.innerHTML = filtered.map((row) => {
+    const createdAt = row.created_at ? formatDateTime(row.created_at) : '-';
+    const contact = [row.phone || row.mobile || '-', row.email || row.executor_email || 'No email'].filter(Boolean).join(' | ');
+    return `<tr>
+      <td><b>${esc(row.full_name || row.name || '-')}</b><div class="muted">${esc(row.executor_name || 'Executive')} | ${esc(row.executor_email || '-')}</div></td>
+      <td>${esc(contact)}</td>
+      <td>${esc(row.advertisement || 'Advertisement')}</td>
+      <td>${esc(row.problem || '-')}</td>
+      <td>${esc(createdAt)}</td>
+      <td><span class="pill pending">New</span></td>
+    </tr>`;
+  }).join('');
+}
+
+window.loadAdminTaskRows = loadAdminTaskRows;
+window.setAdminTaskTab = setAdminTaskTab;
+window.debouncedAdminTaskSearch = debouncedAdminTaskSearch;
+window.renderAdminTaskAssignRows = renderAdminTaskAssignRows;
+
+window.addEventListener('storage', (event) => {
+  if (event.key !== 'crm.assignNewTask.updatedAt') return;
+  if (window.adminTaskState?.tab !== 'assign') return;
+  loadAdminTaskRows().catch(() => null);
+});
 
 
 async function loadBulkAssignExecutives() {
@@ -1248,6 +1344,70 @@ async function loadBulkAssignExecutives() {
       return accountProfile?.metadata && typeof accountProfile.metadata === 'object' ? accountProfile.metadata : {};
     }
 
+    function accountAssignNewTasks() {
+      const meta = accountMetadata();
+      return Array.isArray(meta.assign_new_tasks) ? meta.assign_new_tasks : [];
+    }
+
+    async function refreshAccountAssignNewTaskData() {
+      if (!accountProfile?.id || currentUser?.role !== 'admin') return null;
+      try {
+        const data = await apiFetch('/api/users/' + encodeURIComponent(accountProfile.id));
+        const freshUser = data.user || null;
+        const freshTasks = Array.isArray(freshUser?.metadata?.assign_new_tasks) ? freshUser.metadata.assign_new_tasks : [];
+        accountProfile.metadata = accountMetadata();
+        accountProfile.metadata.assign_new_tasks = freshTasks;
+        accountNewTaskRows = freshTasks;
+        return freshUser;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function setAccountAssignNewTasks(tasks) {
+      accountProfile.metadata = accountMetadata();
+      accountProfile.metadata.assign_new_tasks = Array.isArray(tasks) ? tasks : [];
+      accountNewTaskRows = accountProfile.metadata.assign_new_tasks;
+    }
+
+    function clearAccountTaskForm() {
+      for (const id of ['accountTaskFullName', 'accountTaskEmail', 'accountTaskPhone', 'accountTaskAdvertisement', 'accountTaskProblem']) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      }
+    }
+
+    function toggleAccountTaskForm(force) {
+      const form = document.getElementById('accountTaskForm');
+      const button = document.getElementById('accountTaskToggleBtn');
+      if (!form || !button) return;
+      const open = typeof force === 'boolean' ? force : form.style.display === 'none' || !form.style.display;
+      form.style.display = open ? 'block' : 'none';
+      button.textContent = open ? 'Close' : '+ Add New';
+      if (!open) clearAccountTaskForm();
+    }
+
+    async function persistAccountNewTasks(tasks) {
+      if (!accountProfile?.id) return;
+      const metadata = accountMetadata();
+      metadata.assign_new_tasks = tasks;
+      const patch = {
+        name: accountProfile.name || metadata.full_name || '',
+        email: accountProfile.email || metadata.email || '',
+        mobile: accountProfile.mobile || metadata.mobile || '',
+        metadata
+      };
+      const data = await apiFetch('/api/users/' + encodeURIComponent(accountProfile.id), {
+        method: 'PUT',
+        body: JSON.stringify(patch)
+      });
+      const updated = data.user || accountProfile;
+      accountRows = accountRows.map(user => String(user.id) === String(updated.id) ? { ...user, ...updated } : user);
+      accountProfile = clone(updated);
+      accountProfileSnapshot = clone(updated);
+      return updated;
+    }
+
     function isAccountProfileEditable() {
       return Boolean(accountProfile && accountProfileEditMode);
     }
@@ -1650,11 +1810,18 @@ async function loadBulkAssignExecutives() {
 
     function syncAccountTaskTabVisibility() {
       const tabBtn = document.getElementById('accountTabBtnTask');
+      const assignTabBtn = document.getElementById('accountTabBtnAssignNewTask');
       const tabPanel = document.getElementById('accountTabTask');
+      const assignTabPanel = document.getElementById('accountTabAssignNewTask');
       const showTasks = String(accountProfile?.role || '').toLowerCase() === 'executor';
       if (tabBtn) tabBtn.style.display = showTasks ? 'inline-flex' : 'none';
+      if (assignTabBtn) assignTabBtn.style.display = showTasks ? 'inline-flex' : 'none';
       if (!showTasks && tabPanel) tabPanel.classList.remove('active');
+      if (!showTasks && assignTabPanel) assignTabPanel.classList.remove('active');
       if (!showTasks && document.getElementById('accountTabBtnTask')?.classList.contains('active')) {
+        switchAccountTab('personal');
+      }
+      if (!showTasks && document.getElementById('accountTabBtnAssignNewTask')?.classList.contains('active')) {
         switchAccountTab('personal');
       }
     }
@@ -1688,7 +1855,7 @@ async function loadBulkAssignExecutives() {
           <div class="muted">${esc(task.stage || 'Task')}</div>
           <div class="muted">Assigned at: ${esc(assignedAt)}</div>
           ${task.mobile ? `<div class="muted">Mobile: ${esc(task.mobile)}</div>` : ''}
-          ${task.email ? `<div class="muted">Email: ${esc(task.email)}</div>` : ''}
+          <div class="muted">Email: ${esc(task.email || '-')}</div>
           ${instruction ? `<div class="muted">${esc(instruction)}</div>` : ''}
         </div>`;
       }).join('');
@@ -1712,6 +1879,76 @@ async function loadBulkAssignExecutives() {
       } catch (error) {
         accountTaskRows = [];
         renderAccountTaskList(error.message || 'Task list failed');
+      }
+    }
+
+    function renderAccountNewTaskList(message = '') {
+      const list = document.getElementById('accountNewTaskList');
+      const count = document.getElementById('accountNewTaskCount');
+      if (!list || !count) return;
+      if (String(accountProfile?.role || '').toLowerCase() !== 'executor') {
+        accountNewTaskRows = [];
+        list.innerHTML = '<div class="empty">Task creation is available only for executive accounts.</div>';
+        count.textContent = '0 tasks';
+        return;
+      }
+      accountNewTaskRows = accountAssignNewTasks();
+      if (!accountNewTaskRows.length) {
+        list.innerHTML = `<div class="empty">${esc(message || 'No new tasks added yet')}</div>`;
+        count.textContent = '0 tasks';
+        return;
+      }
+      count.textContent = `${accountNewTaskRows.length} task${accountNewTaskRows.length === 1 ? '' : 's'}`;
+      list.innerHTML = accountNewTaskRows.map((task, index) => {
+        const createdAt = task.created_at ? formatDateTime(task.created_at) : '-';
+        return `<div class="assign-new-task-row">
+          <div class="assign-new-task-cell assign-new-task-cell-primary">
+            <b>#${esc(index + 1)} ${esc(task.full_name || task.name || '-')}</b>
+            <div class="muted">User | ${esc(task.email || 'No email')} | ${esc(task.phone || '-')}</div>
+          </div>
+          <div class="assign-new-task-cell">${esc(task.advertisement || 'Advertisement')}</div>
+          <div class="assign-new-task-cell">${esc(task.problem || '-')}</div>
+          <div class="assign-new-task-cell">${esc(createdAt)}</div>
+          <div class="assign-new-task-cell assign-new-task-cell-status">
+            <span class="pill pending">New</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function loadAccountNewTaskList() {
+      await refreshAccountAssignNewTaskData();
+      renderAccountNewTaskList();
+    }
+
+    async function submitAccountTask(event) {
+      event?.preventDefault?.();
+      if (String(accountProfile?.role || '').toLowerCase() !== 'executor') return showToast('Task creation is only available for executive accounts');
+      const fullName = String(document.getElementById('accountTaskFullName')?.value || '').trim();
+      const email = String(document.getElementById('accountTaskEmail')?.value || '').trim();
+      const phone = String(document.getElementById('accountTaskPhone')?.value || '').trim();
+      const advertisement = String(document.getElementById('accountTaskAdvertisement')?.value || '').trim();
+      const problem = String(document.getElementById('accountTaskProblem')?.value || '').trim();
+      if (!fullName || !problem) return showToast('Full name and problem are required');
+      const tasks = accountAssignNewTasks();
+      tasks.unshift({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        full_name: fullName,
+        email,
+        phone,
+        advertisement,
+        problem,
+        created_at: new Date().toISOString()
+      });
+      try {
+        setAccountAssignNewTasks(tasks);
+        await persistAccountNewTasks(tasks);
+        renderAccountNewTaskList();
+        clearAccountTaskForm();
+        toggleAccountTaskForm(false);
+        showToast('Task added');
+      } catch (error) {
+        showToast(error.message || 'Task save failed');
       }
     }
 
@@ -1766,6 +2003,9 @@ async function loadBulkAssignExecutives() {
       accountTaskRows = [];
       renderAccountTaskList();
       loadAccountTaskList();
+      renderAccountNewTaskList();
+      loadAccountNewTaskList();
+      toggleAccountTaskForm(false);
       updateAccountProfileAssignButtonState();
       setAccountProfileEditMode(Boolean(edit));
       updateAccountProfileDeleteButtonState();
@@ -1787,6 +2027,8 @@ async function loadBulkAssignExecutives() {
       accountHistoryOpen = false;
       deleteAccountTarget = null;
       accountTaskRows = [];
+      accountNewTaskRows = [];
+      toggleAccountTaskForm(false);
     }
 
     function setAccountProfileEditMode(enabled) {
@@ -1799,6 +2041,7 @@ async function loadBulkAssignExecutives() {
       if (uploadBtn) uploadBtn.disabled = !accountProfileEditMode;
       for (const el of document.querySelectorAll('#accountModal input, #accountModal select, #accountModal textarea')) {
         if (el.id === 'accountProfileExecutive' || el.id === 'accountAssignInstruction') continue;
+        if (el.closest('#accountTaskForm')) continue;
         el.disabled = !accountProfileEditMode;
       }
       if (document.getElementById('accountCallMobile')) document.getElementById('accountCallMobile').style.pointerEvents = accountProfileEditMode ? 'none' : 'auto';
@@ -1811,6 +2054,8 @@ async function loadBulkAssignExecutives() {
       renderAccountFamilyInfo();
       renderAccountAttendance();
       syncAccountTaskTabVisibility();
+      renderAccountNewTaskList();
+      toggleAccountTaskForm(false);
     }
 
     function updateAccountProfileDeleteButtonState() {
@@ -1835,20 +2080,24 @@ async function loadBulkAssignExecutives() {
       fillAccountPersonalForm();
       renderAccountCustomFields();
       renderAccountFamilyInfo();
-        renderAccountAttendance();
-        renderAccountHistory();
-        syncAccountTaskTabVisibility();
-        renderAccountTaskList();
-        updateAccountProfileAssignButtonState();
+      renderAccountAttendance();
+      renderAccountHistory();
+      syncAccountTaskTabVisibility();
+      renderAccountTaskList();
+      renderAccountNewTaskList();
+      updateAccountProfileAssignButtonState();
+      toggleAccountTaskForm(false);
       setAccountProfileEditMode(false);
       switchAccountTab('personal');
     }
 
     function switchAccountTab(tab) {
+      const tabKey = String(tab || '').toLowerCase() === 'assignnewtask' ? 'AssignNewTask' : tab[0].toUpperCase() + tab.slice(1);
       for (const el of document.querySelectorAll('#accountModal .tab-panel')) el.classList.remove('active');
       for (const el of document.querySelectorAll('#accountModal .tab-btn')) el.classList.remove('active');
-      document.getElementById('accountTab' + tab[0].toUpperCase() + tab.slice(1)).classList.add('active');
-      document.getElementById('accountTabBtn' + tab[0].toUpperCase() + tab.slice(1)).classList.add('active');
+      document.getElementById('accountTab' + tabKey).classList.add('active');
+      document.getElementById('accountTabBtn' + tabKey).classList.add('active');
+      if (tabKey === 'AssignNewTask') loadAccountNewTaskList();
     }
 
     async function saveAccountProfile() {
@@ -1880,12 +2129,14 @@ async function loadBulkAssignExecutives() {
         renderAccountHistory();
         syncAccountTaskTabVisibility();
         renderAccountTaskList();
+        renderAccountNewTaskList();
         await loadAccountTaskList().catch(() => null);
+        await loadAccountNewTaskList().catch(() => null);
         setAccountProfileEditMode(false);
         renderUsers();
         if (currentUser && String(currentUser.id) === String(updated.id)) {
           currentUser = { ...currentUser, ...updated };
-          localStorage.setItem('user', JSON.stringify(currentUser));
+          if (typeof writeSession === 'function') writeSession(token, currentUser);
           document.getElementById('topUser').textContent = `${currentUser.name} (${roleName(currentUser.role)})`;
           document.getElementById('roleLabel').textContent = `${currentUser.name} (${roleName(currentUser.role)})`;
         }

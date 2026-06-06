@@ -53,196 +53,217 @@
 
   <div class="modal-back" id="profileModal">
     <div class="modal">
-      <div class="modal-head">
-        <div class="modal-title-with-avatar">
-          <img id="profileModalAvatar" class="modal-title-avatar" alt="Profile image">
-          <b id="modalTitle">Profile</b>
+      <div class="profile-card">
+        <div class="profile-header">
+          <div class="user-left">
+            <img id="profileModalAvatar" class="avatar" alt="Profile image">
+            <div class="user-info">
+              <h1 id="profileName">Profile</h1>
+              <div class="badge" id="profileType">User</div>
+              <div class="meta">ID: <span id="profileId">-</span> · Row: <span id="profileRow">-</span> · <span
+                  id="mobileNumber">-</span></div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn" id="profileHistoryBtn" onclick="toggleProfileHistory()">History</button>
+            <button class="btn" id="profileEditBtn" onclick="setProfileEditMode(true)">Edit Profile</button>
+            <a class="btn call" id="callMobile" href="#">Call Mobile</a>
+            <button class="btn" id="profileCancelBtn" onclick="cancelProfileEdit()" style="display:none">Cancel</button>
+            <button class="btn call" id="profileSaveBtn" onclick="saveProfile()" style="display:none">Save</button>
+            <button class="btn" onclick="closeProfile()">Close</button>
+          </div>
         </div>
-        <div class="modal-head-actions">
-          <button id="profileHistoryBtn" onclick="toggleProfileHistory()">History</button>
-          <button id="profileEditBtn" class="icon-btn" onclick="setProfileEditMode(true)" title="Edit profile"
-            aria-label="Edit profile">&#9998;</button>
-          <button id="profileCancelBtn" class="icon-btn" onclick="cancelProfileEdit()" title="Cancel editing"
-            aria-label="Cancel editing" style="display:none">&#10005;</button>
-          <button id="profileSaveBtn" class="icon-btn primary" onclick="saveProfile()" title="Save profile"
-            aria-label="Save profile" style="display:none">&#10003;</button>
-          <button onclick="closeProfile()">Close</button>
+
+        <div class="tabs">
+          <button class="tab-btn tab active" id="tabBtnPersonal" onclick="switchProfileTab('personal')">Personal Information</button>
+          <button class="tab-btn tab" id="tabBtnFamily" onclick="switchProfileTab('family')">Family Info</button>
+          <button class="tab-btn tab" id="tabBtnAttendance" onclick="switchProfileTab('attendance')">Program Attendance</button>
+          <button class="tab-btn tab" id="tabBtnFollow" onclick="switchProfileTab('follow')">Follow Up</button>
+          <button class="tab-btn tab" id="tabBtnCustom" onclick="switchProfileTab('custom')">Custom Fields</button>
         </div>
-      </div>
-      <div class="profile">
-        <aside class="profile-side">
-          <img id="pImg" class="profile-img" alt="Profile">
-          <div id="profileClass" class="role-label">User</div>
-          <div class="panel-title" id="pName">-</div>
-          <div class="muted" id="pId">-</div>
-          <div class="profile-actions">
-            <a id="callMobile" class="primary"
-              style="text-decoration:none;border-radius:8px;padding:.58rem .85rem;font-weight:800" href="#">Call
-              Mobile</a>
-          </div>
-        </aside>
-        <section class="profile-main">
-          <div class="info admin-only block" style="margin-bottom:.8rem; display:none">
-            <div class="label">Admin Task Assignment</div>
-            <div class="assign-row">
-              <select id="profileExecutive" onchange="updateProfileAssignButtonState()"></select>
-              <button id="profileAssignBtn" class="primary" onclick="assignSelected()">Assign / Reassign</button>
-            </div>
-            <textarea id="assignInstruction" placeholder="Instruction for Executive"
-              style="margin-top:.6rem"></textarea>
-          </div>
-          <div class="tabs">
-            <button class="tab-btn active" id="tabBtnPersonal" onclick="switchProfileTab('personal')">Personal
-              Information</button>
-            <button class="tab-btn" id="tabBtnFamily" onclick="switchProfileTab('family')">Family Info</button>
-            <button class="tab-btn" id="tabBtnAttendance" onclick="switchProfileTab('attendance')">Program
-              Attendance</button>
+
+        <div id="tabPersonal" class="tab-panel tab-content active info">
+          <div class="section-header">
+            <h3>Personal Information</h3>
+            <button class="add-field-btn profile-edit-only" onclick="addCustomField()">+ Add Field</button>
           </div>
 
-          <div id="tabPersonal" class="tab-panel active info">
-            <div class="form-grid">
-              <div class="field">
-                <div class="label">Full Name</div><input data-personal="full_name">
-              </div>
-              <div class="field">
-                <div class="label">Email</div><input data-personal="email" type="email">
-              </div>
-              <div class="field">
-                <div class="label">Mobile</div><input data-personal="mobile">
-              </div>
-              <div class="field phone-number-field" style="grid-column: 1 / -1;">
-                <div class="label">Additional Phone Numbers</div>
-                <div class="phone-number-list" id="profilePhoneNumbers"></div>
-                <div class="phone-number-help">Add extra contact numbers for this profile. The main Mobile field stays as the primary number.</div>
-                <button id="addPhoneNumberBtn" class="phone-number-add" style="margin-top:.45rem" onclick="addPhoneNumber()">+ Add Number</button>
-              </div>
-              <div class="field">
-                <div class="label">Father's Name</div><input data-personal="father_name">
-              </div>
-              <div class="field">
-                <div class="label">Mother's Name</div><input data-personal="mother_name">
-              </div>
-              <div class="field">
-                <div class="label">Date of Birth</div><input data-personal="date_of_birth" type="date">
-              </div>
-              <div class="field">
-                <div class="label">Marital Status</div><select data-personal="marital_status">
-                  <option value=""></option>
-                  <option>Single</option>
-                  <option>Married</option>
-                  <option>Divorced</option>
-                  <option>Widowed</option>
-                </select>
-              </div>
-              <div class="field">
-                <div class="label">Blood Group</div><select data-personal="blood_group">
-                  <option value=""></option>
-                  <option>A+</option>
-                  <option>A-</option>
-                  <option>B+</option>
-                  <option>B-</option>
-                  <option>AB+</option>
-                  <option>AB-</option>
-                  <option>O+</option>
-                  <option>O-</option>
-                </select>
-              </div>
-              <div class="field">
-                <div class="label">Occupation</div><input data-personal="occupation">
-              </div>
-              <div class="field admin-only">
-                <div class="label">System Classification</div><select id="profileClassification">
-                  <option>User</option>
-                  <option>Executive</option>
-                  <option>Admin</option>
-                </select>
-              </div>
-              <div class="field">
-                <div class="label">Present Address</div><textarea data-personal="present_address" rows="3"></textarea>
-              </div>
-              <div class="field">
-                <div class="label">Permanent Address</div><textarea data-personal="permanent_address"
-                  rows="3"></textarea>
-              </div>
-            </div>
-            <div class="history-top" style="margin-top:.8rem">
-              <div>
-                <div class="label">Custom Fields</div>
-                <div class="muted">Add scalable profile fields as needed.</div>
-              </div>
-              <button id="addCustomFieldBtn" onclick="addCustomField()">Add Custom Field</button>
-            </div>
-            <div class="custom-list" id="customFields"></div>
+          <div class="data-list profile-readonly-only" id="personalList">
+            <div class="data-row"><div class="label">Full Name</div><div class="value" id="fullNameValue">-</div></div>
+            <div class="data-row"><div class="label">Email</div><div class="value" id="emailValue">-</div></div>
+            <div class="data-row"><div class="label">Mobile</div><div class="value" id="mobileValue">-</div></div>
+            <div class="data-row"><div class="label">Row</div><div class="value" id="rowValue">-</div></div>
+            <div class="data-row"><div class="label">Additional Phone</div><div class="value" id="additionalPhoneValue">-</div></div>
+            <div class="data-row"><div class="label">Date of Birth</div><div class="value" id="dobValue">-</div></div>
+            <div class="data-row"><div class="label">Marital Status</div><div class="value" id="maritalValue">-</div></div>
+            <div class="data-row"><div class="label">Blood Group</div><div class="value" id="bloodValue">-</div></div>
+            <div class="data-row"><div class="label">Occupation</div><div class="value" id="occupationValue">-</div></div>
+            <div class="data-row"><div class="label">System Classification</div><div class="value" id="systemValue">-</div></div>
+            <div class="data-row"><div class="label">Present Address</div><div class="value" id="presentAddressValue">-</div></div>
+            <div class="data-row"><div class="label">Permanent Address</div><div class="value" id="permanentAddressValue">-</div></div>
           </div>
 
-          <div id="tabFamily" class="tab-panel info">
-            <div class="history-top">
-              <div>
-                <div class="label">Family Members</div>
-                <div class="muted">Dynamic nested records are stored in the profile JSONB payload.</div>
-              </div>
-              <div class="family-actions">
-                <button id="addFamilyBtn" onclick="addFamilyMember()">Add New Member</button>
-              </div>
+          <div class="form-grid profile-edit-only">
+            <div class="field">
+              <div class="label">Full Name</div><input data-personal="full_name">
             </div>
-            <div class="family-grid" id="familyGrid"></div>
-          </div>
-
-          <div id="tabAttendance" class="tab-panel info">
-            <div class="history-top">
-              <div>
-                <div class="label">Attendance Summary</div>
-                <div class="muted" id="attendanceSummary">No attendance recorded</div>
-              </div>
+            <div class="field">
+              <div class="label">Email</div><input data-personal="email" type="email">
             </div>
-            <div class="attendance-bar">
-              <input id="attendanceEvent" placeholder="Program or event name">
-              <input id="attendanceTime" type="datetime-local">
-              <button id="addAttendanceBtn" onclick="addAttendance()">Add Attendance</button>
+            <div class="field">
+              <div class="label">Mobile</div><input data-personal="mobile">
             </div>
-            <div class="attendance-list" id="attendanceList"></div>
-          </div>
-
-          <div class="info">
-            <div class="label">Update Call Details</div>
-            <div class="edit-grid">
-              <select id="editStage"></select>
-              <textarea id="editProblem" placeholder="Problem"></textarea>
-              <textarea id="editRemarks" placeholder="Remarks"></textarea>
-              <textarea id="callNotes" placeholder="Call notes for audit history"></textarea>
+            <div class="field phone-number-field" style="grid-column: 1 / -1;">
+              <div class="label">Additional Phone Numbers</div>
+              <div class="phone-number-list" id="profilePhoneNumbers"></div>
+              <div class="phone-number-help">Add extra contact numbers for this profile. The main Mobile field stays as the primary number.</div>
+              <button id="addPhoneNumberBtn" class="phone-number-add" style="margin-top:.45rem" onclick="addPhoneNumber()">+ Add Number</button>
+            </div>
+            <div class="field">
+              <div class="label">Father's Name</div><input data-personal="father_name">
+            </div>
+            <div class="field">
+              <div class="label">Mother's Name</div><input data-personal="mother_name">
+            </div>
+            <div class="field">
+              <div class="label">Date of Birth</div><input data-personal="date_of_birth" type="date">
+            </div>
+            <div class="field">
+              <div class="label">Marital Status</div><select data-personal="marital_status">
+                <option value=""></option>
+                <option>Single</option>
+                <option>Married</option>
+                <option>Divorced</option>
+                <option>Widowed</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="label">Blood Group</div><select data-personal="blood_group">
+                <option value=""></option>
+                <option>A+</option>
+                <option>A-</option>
+                <option>B+</option>
+                <option>B-</option>
+                <option>AB+</option>
+                <option>AB-</option>
+                <option>O+</option>
+                <option>O-</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="label">Occupation</div><input data-personal="occupation">
+            </div>
+            <div class="field admin-only">
+              <div class="label">System Classification</div><select id="profileClassification">
+                <option>User</option>
+                <option>Executive</option>
+                <option>Admin</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="label">Present Address</div><textarea data-personal="present_address" rows="3"></textarea>
+            </div>
+            <div class="field">
+              <div class="label">Permanent Address</div><textarea data-personal="permanent_address" rows="3"></textarea>
             </div>
           </div>
 
-          <div class="info" id="profileHistorySection" style="display:none">
-            <div class="history-top">
-              <div>
-                <div class="label">History</div>
-                <div class="muted">Call and profile change history are shown separately.</div>
-              </div>
-              <button class="danger admin-only" onclick="clearHistory()">Clear History</button>
-            </div>
-            <div class="history-sections">
-              <div class="history-section">
-                <div class="history-section-head">
-                  <div>
-                    <div class="label">Call History</div>
-                    <div class="muted">Call notes and call updates.</div>
-                  </div>
-                </div>
-                <div class="history-list" id="profileCallHistoryList"></div>
-              </div>
-              <div class="history-section">
-                <div class="history-section-head">
-                  <div>
-                    <div class="label">Profile Change History</div>
-                    <div class="muted">Profile updates, uploads, and assignments.</div>
-                  </div>
-                </div>
-                <div class="history-list" id="profileChangeHistoryList"></div>
-              </div>
-            </div>
+        </div>
+
+        <div id="tabFamily" class="tab-panel tab-content info">
+          <div class="section-header">
+            <h3>Family Info</h3>
+            <button class="add-field-btn" id="addFamilyBtn" onclick="addFamilyMember()">+ Add Field</button>
           </div>
-        </section>
+          <div class="data-list profile-readonly-only" id="familyList">
+            <div class="data-row"><div class="label">Father's Name</div><div class="value" id="familyFatherValue">-</div></div>
+            <div class="data-row"><div class="label">Mother's Name</div><div class="value" id="familyMotherValue">-</div></div>
+            <div class="data-row"><div class="label">Guardian Phone</div><div class="value" id="familyGuardianPhoneValue">-</div></div>
+            <div class="data-row"><div class="label">Family Address</div><div class="value" id="familyAddressValue">-</div></div>
+          </div>
+          <div class="profile-edit-only">
+          <div class="family-grid" id="familyGrid"></div>
+          </div>
+        </div>
+
+        <div id="tabAttendance" class="tab-panel tab-content info">
+          <div class="section-header">
+            <h3>Program Attendance</h3>
+            <button class="add-field-btn profile-edit-only" id="addAttendanceHeaderBtn" onclick="addAttendance()">+ Add Field</button>
+          </div>
+          <div class="data-list profile-readonly-only" id="programList">
+            <div class="data-row"><div class="label">Program Name</div><div class="value" id="programNameValue">Not added</div></div>
+            <div class="data-row"><div class="label">Attendance</div><div class="value" id="attendancePercentValue">0%</div></div>
+            <div class="data-row"><div class="label">Last Join Date</div><div class="value" id="lastJoinValue">-</div></div>
+            <div class="data-row"><div class="label">Status</div><div class="value" id="programStatusValue">Pending</div></div>
+          </div>
+          <div class="profile-edit-only">
+          <div class="attendance-bar">
+            <input id="attendanceEvent" placeholder="Program or event name">
+            <input id="attendanceTime" type="datetime-local">
+            <button id="addAttendanceBtn" onclick="addAttendance()">Add Attendance</button>
+          </div>
+          <div class="attendance-list" id="attendanceList"></div>
+          </div>
+          <div class="muted" id="attendanceSummary" style="margin-top:.5rem">No attendance recorded</div>
+        </div>
+
+        <div id="tabFollow" class="tab-panel tab-content info">
+          <div class="follow-wrap" id="profileHistorySection">
+            <table>
+              <thead>
+                <tr>
+                  <th>SL</th>
+                  <th>F/U Date</th>
+                  <th>F/U Comment</th>
+                  <th>F/U Feedback</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="profileFollowTable">
+                <tr>
+                  <td colspan="5"><div class="empty">No follow up history yet</div></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="total" id="profileHistoryTotal">Total 0 records</div>
+          </div>
+        </div>
+
+        <div id="tabCustom" class="tab-panel tab-content info">
+          <div class="section-header">
+            <h3>Custom Fields</h3>
+            <button class="add-field-btn" id="addCustomFieldBtn" onclick="addCustomField()">+ Add Field</button>
+          </div>
+          <div class="data-list profile-readonly-only" id="customList"></div>
+          <div class="custom-list profile-edit-only" id="customFields"></div>
+        </div>
+
+        <div class="info admin-only" style="display:none">
+          <div class="label">Admin Task Assignment</div>
+          <div class="assign-row">
+            <select id="profileExecutive" onchange="updateProfileAssignButtonState()"></select>
+            <button id="profileAssignBtn" class="primary" onclick="assignSelected()">Assign / Reassign</button>
+          </div>
+          <textarea id="assignInstruction" placeholder="Instruction for Executive" style="margin-top:.6rem"></textarea>
+        </div>
+
+        <div class="info" style="display:none">
+          <div class="label">Update Call Details</div>
+          <div class="edit-grid">
+            <select id="editStage"></select>
+            <textarea id="editProblem" placeholder="Problem"></textarea>
+            <textarea id="editRemarks" placeholder="Remarks"></textarea>
+            <textarea id="callNotes" placeholder="Call notes for audit history"></textarea>
+          </div>
+        </div>
+
+        <b id="modalTitle" style="display:none">Profile</b>
+        <img id="pImg" alt="Profile" style="display:none">
+        <div id="pName" style="display:none">-</div>
+        <div id="pId" style="display:none">-</div>
+        <div id="profileClass" style="display:none">User</div>
       </div>
     </div>
   </div>
@@ -294,6 +315,7 @@
             <button class="tab-btn active" id="accountTabBtnPersonal" onclick="switchAccountTab('personal')">Personal
               Information</button>
             <button class="tab-btn" id="accountTabBtnTask" onclick="switchAccountTab('task')">Task</button>
+            <button class="tab-btn" id="accountTabBtnAssignNewTask" onclick="switchAccountTab('assignnewtask')">Assign New Task</button>
             <button class="tab-btn" id="accountTabBtnFamily" onclick="switchAccountTab('family')">Family Info</button>
             <button class="tab-btn" id="accountTabBtnAttendance" onclick="switchAccountTab('attendance')">Program
               Attendance</button>
@@ -417,6 +439,50 @@
               <div class="muted" id="accountTaskCount">0 tasks</div>
             </div>
             <div class="history-list" id="accountTaskList"></div>
+          </div>
+
+          <div id="accountTabAssignNewTask" class="tab-panel info">
+            <div class="task-assign-card">
+              <div class="task-assign-head">
+                <div>
+                  <div class="label">Assign New Task</div>
+                  <div class="muted">Create a new task for this executive account and keep it listed below.</div>
+                </div>
+                <button type="button" class="task-add-btn" id="accountTaskToggleBtn" onclick="toggleAccountTaskForm()">+ Add New</button>
+              </div>
+
+              <form id="accountTaskForm" class="task-assign-form" onsubmit="submitAccountTask(event)" style="display:none">
+                <div class="form-group">
+                  <label>Full Name</label>
+                  <input type="text" id="accountTaskFullName" class="form-control" placeholder="Enter full name">
+                </div>
+                <div class="form-group">
+                  <label>Email Address</label>
+                  <input type="email" id="accountTaskEmail" class="form-control" placeholder="Enter email">
+                </div>
+                <div class="form-group">
+                  <label>Phone Number</label>
+                  <input type="tel" id="accountTaskPhone" class="form-control" placeholder="Enter phone number">
+                </div>
+                <div class="form-group">
+                  <label>Advertisement</label>
+                  <input type="text" id="accountTaskAdvertisement" class="form-control" placeholder="Enter advertisement">
+                </div>
+                <div class="form-group">
+                  <label>Problem</label>
+                  <textarea id="accountTaskProblem" class="form-control" placeholder="Describe your problem..."></textarea>
+                </div>
+                <button type="submit" class="submit-btn">Submit Problem</button>
+              </form>
+
+              <div class="task-list-wrap">
+                <div class="history-top" style="margin-top:.75rem">
+                  <div class="label">Task List</div>
+                  <div class="muted" id="accountNewTaskCount">0 tasks</div>
+                </div>
+                <div class="task-list" id="accountNewTaskList"></div>
+              </div>
+            </div>
           </div>
 
           <div class="info">

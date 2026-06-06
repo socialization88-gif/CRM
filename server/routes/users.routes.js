@@ -3,6 +3,124 @@ const express = require('express');
 function createUsersRoutes(ctx) {
   const router = express.Router();
   with (ctx) {
+    router.get('/api/executor/assign-new-tasks', requireAuth, requireRole(['executor']), async (req, res) => {
+      try {
+        const result = await pool.query(`
+          SELECT metadata
+          FROM public.app_users
+          WHERE id = $1
+          LIMIT 1
+        `, [req.user.id]);
+        if (!result.rows.length) return res.status(404).json({ ok: false, message: 'User not found' });
+        const metadata = result.rows[0].metadata && typeof result.rows[0].metadata === 'object' ? result.rows[0].metadata : {};
+        const tasks = Array.isArray(metadata.assign_new_tasks) ? metadata.assign_new_tasks : [];
+        res.json({ ok: true, tasks });
+      } catch (error) {
+        res.status(500).json({ ok: false, message: 'Assign new task list load failed', error: error.message });
+      }
+    });
+
+    router.get('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+      const perms = await getPermissionSettings();
+      if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied: Create & manage accounts' });
+      try {
+        const id = String(req.params.id || '').trim();
+        if (!id) return res.status(400).json({ ok: false, message: 'User id required' });
+        const result = await pool.query(`
+          SELECT
+            u.id,
+            u.name,
+            u.email,
+            u.role,
+            u.active,
+            u.profile_row_id,
+            u.metadata,
+            u.created_at,
+            u.updated_at,
+            r.data AS profile_data
+          FROM public.app_users u
+          LEFT JOIN public.dataset_rows r
+            ON r.dataset_id = $1
+           AND r.id::text = u.profile_row_id
+          WHERE u.id = $2
+          LIMIT 1
+        `, [DATASET_ID, id]);
+        if (!result.rows.length) return res.status(404).json({ ok: false, message: 'User not found' });
+        res.json({ ok: true, user: safeUser(result.rows[0]) });
+      } catch (error) {
+        res.status(500).json({ ok: false, message: 'User load failed', error: error.message });
+      }
+    });
+
+    router.get('/api/admin/assign-new-tasks', requireAuth, requireRole(['admin']), async (req, res) => {
+      try {
+        const result = await pool.query(`
+          SELECT id, name, email, metadata
+          FROM public.app_users
+          WHERE role = 'executor'
+            AND active = TRUE
+          ORDER BY name ASC
+        `);
+        const tasks = result.rows.flatMap((row) => {
+          const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+          const items = Array.isArray(metadata.assign_new_tasks) ? metadata.assign_new_tasks : [];
+          return items.map((task) => ({
+            id: String(task?.id || '').trim(),
+            executor_id: row.id,
+            executor_name: row.name,
+            executor_email: row.email,
+            full_name: String(task?.full_name || '').trim(),
+            email: String(task?.email || '').trim(),
+            phone: String(task?.phone || '').trim(),
+            advertisement: String(task?.advertisement || '').trim(),
+            problem: String(task?.problem || '').trim(),
+            created_at: String(task?.created_at || '').trim(),
+            updated_at: String(task?.updated_at || '').trim(),
+          })).filter((task) => task.full_name || task.problem);
+        }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+        res.json({ ok: true, tasks });
+      } catch (error) {
+        res.status(500).json({ ok: false, message: 'Admin assign new task load failed', error: error.message });
+      }
+    });
+
+    router.put('/api/executor/assign-new-tasks', requireAuth, requireRole(['executor']), async (req, res) => {
+      try {
+        const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : null;
+        if (!tasks) return res.status(400).json({ ok: false, message: 'Tasks array required' });
+        const current = await pool.query(`
+          SELECT id, name, email, role, active, metadata
+          FROM public.app_users
+          WHERE id = $1
+          LIMIT 1
+        `, [req.user.id]);
+        if (!current.rows.length) return res.status(404).json({ ok: false, message: 'User not found' });
+        const existingMeta = current.rows[0].metadata && typeof current.rows[0].metadata === 'object' ? current.rows[0].metadata : {};
+        const nextMeta = mergeRoleMetadata({
+          ...existingMeta,
+          assign_new_tasks: tasks.map((task) => ({
+            id: String(task?.id || '').trim(),
+            full_name: String(task?.full_name || '').trim(),
+            email: String(task?.email || '').trim(),
+            phone: String(task?.phone || '').trim(),
+            advertisement: String(task?.advertisement || '').trim(),
+            problem: String(task?.problem || '').trim(),
+            created_at: String(task?.created_at || '').trim(),
+            updated_at: String(task?.updated_at || '').trim(),
+          })).filter((task) => task.full_name || task.problem)
+        }, current.rows[0].role, current.rows[0]);
+        await pool.query(`
+          UPDATE public.app_users
+          SET metadata = $2::jsonb,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [req.user.id, JSON.stringify(nextMeta)]);
+        res.json({ ok: true, tasks: nextMeta.assign_new_tasks || [] });
+      } catch (error) {
+        res.status(500).json({ ok: false, message: 'Assign new task save failed', error: error.message });
+      }
+    });
+
     router.get('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
       const perms = await getPermissionSettings();
       if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied: Create & manage accounts' });
