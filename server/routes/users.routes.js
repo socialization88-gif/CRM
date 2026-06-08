@@ -20,6 +20,39 @@ function createUsersRoutes(ctx) {
       }
     });
 
+    router.get('/api/executor/admin-assigned-tasks', requireAuth, requireRole(['executor']), async (req, res) => {
+      try {
+        const result = await pool.query(`
+          SELECT
+            id::text,
+            row_number,
+            COALESCE(NULLIF(data->>'Full Name', ''), NULLIF(data->>'Name', ''), NULLIF(data->>'full_name', ''), '') AS name,
+            COALESCE(NULLIF(data->>'Email', ''), NULLIF(data->>'email', ''), '') AS email,
+            COALESCE(NULLIF(data->>'Mobile', ''), NULLIF(data->>'mobile', ''), NULLIF(data->>'phone', ''), '') AS mobile,
+            COALESCE(NULLIF(data->>'Advertisement', ''), NULLIF(data->>'advertisement', ''), 'Advertisement') AS advertisement,
+            COALESCE(NULLIF(data->>'Problem', ''), NULLIF(data->>'problem', ''), '') AS problem,
+            COALESCE(NULLIF(data->>'from_source', ''), NULLIF(data->>'source_executor_name', ''), NULLIF(data->>'source', ''), '-') AS source,
+            COALESCE(NULLIF(data->>'task_status', ''), 'Pending') AS task_status,
+            COALESCE(NULLIF(data->>'assigned_at', ''), NULLIF(data->>'assignedAt', ''), '') AS assigned_at,
+            COALESCE(NULLIF(data->>'created_at', ''), '') AS created_at,
+            updated_at
+          FROM public.dataset_rows
+          WHERE dataset_id = $1
+            AND COALESCE(data->>'source_assign_new_task_key', '') <> ''
+            AND (
+              COALESCE(data->>'assigned_to', '') = $2
+              OR LOWER(COALESCE(data->>'assigned_to_email', '')) = LOWER($3)
+            )
+          ORDER BY COALESCE(NULLIF(data->>'assigned_at', ''), NULLIF(data->>'created_at', '')) DESC,
+                   row_number DESC,
+                   id DESC
+        `, [DATASET_ID, req.user.id, req.user.email || '']);
+        res.json({ ok: true, tasks: result.rows });
+      } catch (error) {
+        res.status(500).json({ ok: false, message: 'Assigned task list load failed', error: error.message });
+      }
+    });
+
     router.get('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) => {
       const perms = await getPermissionSettings();
       if (!perms.admin_create_accounts) return res.status(403).json({ ok: false, message: 'Permission denied: Create & manage accounts' });
@@ -54,18 +87,29 @@ function createUsersRoutes(ctx) {
 
     router.get('/api/admin/assign-new-tasks', requireAuth, requireRole(['admin']), async (req, res) => {
       try {
-        const result = await pool.query(`
-          SELECT id, name, email, metadata
-          FROM public.app_users
-          WHERE role = 'executor'
-            AND active = TRUE
-          ORDER BY name ASC
-        `);
+        const [result, assignedResult] = await Promise.all([
+          pool.query(`
+            SELECT id, name, email, metadata
+            FROM public.app_users
+            WHERE role = 'executor'
+              AND active = TRUE
+            ORDER BY name ASC
+          `),
+          pool.query(`
+            SELECT data->>'source_assign_new_task_key' AS source_key
+            FROM public.dataset_rows
+            WHERE dataset_id = $1
+              AND COALESCE(data->>'source_assign_new_task_key', '') <> ''
+          `, [DATASET_ID]),
+        ]);
+        const assignedKeys = new Set(assignedResult.rows.map((row) => row.source_key).filter(Boolean));
         const tasks = result.rows.flatMap((row) => {
           const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
           const items = Array.isArray(metadata.assign_new_tasks) ? metadata.assign_new_tasks : [];
           return items.map((task) => ({
-            id: String(task?.id || '').trim(),
+            id: `${row.id}:${String(task?.id || '').trim()}`,
+            task_id: String(task?.id || '').trim(),
+            source_executor_id: row.id,
             executor_id: row.id,
             executor_name: row.name,
             executor_email: row.email,
@@ -76,11 +120,185 @@ function createUsersRoutes(ctx) {
             problem: String(task?.problem || '').trim(),
             created_at: String(task?.created_at || '').trim(),
             updated_at: String(task?.updated_at || '').trim(),
-          })).filter((task) => task.full_name || task.problem);
+          })).filter((task) => (task.full_name || task.problem) && !assignedKeys.has(task.id));
         }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
         res.json({ ok: true, tasks });
       } catch (error) {
         res.status(500).json({ ok: false, message: 'Admin assign new task load failed', error: error.message });
+      }
+    });
+
+    router.post('/api/admin/assign-new-tasks/assign', requireAuth, requireRole(['admin']), async (req, res) => {
+      const perms = await getPermissionSettings();
+      if (!perms.admin_assign_profiles) return res.status(403).json({ ok: false, message: 'Permission denied' });
+      const client = await pool.connect();
+      try {
+        const rawTaskIds = Array.isArray(req.body.task_ids) ? req.body.task_ids : [];
+        const taskIds = [...new Set(rawTaskIds.map((id) => String(id || '').trim()).filter(Boolean))];
+        const assignedTo = String(req.body.assigned_to || '').trim();
+        if (!taskIds.length) return res.status(400).json({ ok: false, message: 'Please select at least one task.' });
+        if (!assignedTo) return res.status(400).json({ ok: false, message: 'Choose an executive' });
+
+        await client.query('BEGIN');
+        const executiveResult = await client.query(`
+          SELECT id, name, email
+          FROM public.app_users
+          WHERE id = $1 AND role = 'executor' AND active = TRUE
+          LIMIT 1
+        `, [assignedTo]);
+        if (!executiveResult.rows.length) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ ok: false, message: 'Active executive not found' });
+        }
+        const manager = executiveResult.rows[0];
+
+        const usersResult = await client.query(`
+          SELECT id, name, email, role, active, metadata
+          FROM public.app_users
+          WHERE role = 'executor'
+            AND active = TRUE
+          ORDER BY name ASC
+          FOR UPDATE
+        `);
+
+        const sourceTasks = [];
+        const selected = new Set(taskIds);
+        for (const user of usersResult.rows) {
+          const metadata = user.metadata && typeof user.metadata === 'object' ? user.metadata : {};
+          const items = Array.isArray(metadata.assign_new_tasks) ? metadata.assign_new_tasks : [];
+          for (const task of items) {
+            const taskId = String(task?.id || '').trim();
+            const compositeId = `${user.id}:${taskId}`;
+            if (!selected.has(compositeId)) continue;
+            sourceTasks.push({ compositeId, taskId, sourceUser: user, task });
+          }
+        }
+
+        if (sourceTasks.length !== taskIds.length) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ ok: false, message: 'One or more selected tasks are no longer available' });
+        }
+
+        const existingResult = await client.query(`
+          SELECT data->>'source_assign_new_task_key' AS source_key
+          FROM public.dataset_rows
+          WHERE dataset_id = $1
+            AND data->>'source_assign_new_task_key' = ANY($2::text[])
+        `, [DATASET_ID, taskIds]);
+        const duplicateKeys = new Set(existingResult.rows.map((row) => row.source_key).filter(Boolean));
+        if (duplicateKeys.size) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ ok: false, message: 'One or more selected tasks are already assigned' });
+        }
+
+        const maxRowResult = await client.query(`
+          SELECT COALESCE(MAX(row_number), 0)::int AS max_row
+          FROM public.dataset_rows
+          WHERE dataset_id = $1
+        `, [DATASET_ID]);
+        let nextRowNumber = Number(maxRowResult.rows[0]?.max_row || 0);
+        const assignedAt = new Date().toISOString();
+        const inserted = [];
+
+        for (const item of sourceTasks) {
+          nextRowNumber += 1;
+          const fullName = String(item.task?.full_name || '').trim();
+          const email = String(item.task?.email || '').trim();
+          const phone = String(item.task?.phone || '').trim();
+          const advertisement = String(item.task?.advertisement || '').trim();
+          const problem = String(item.task?.problem || '').trim();
+          const data = {
+            'Full Name': fullName,
+            Name: fullName,
+            full_name: fullName,
+            Email: email,
+            email,
+            Mobile: phone,
+            mobile: phone,
+            phone,
+            Advertisement: advertisement,
+            advertisement,
+            Problem: problem,
+            problem,
+            Stage: 'Pending',
+            stage: 'Pending',
+            profile_classification: 'User',
+            task_status: 'Pending',
+            assignmentStatus: 'Pending',
+            assigned_to: manager.id,
+            assigned_to_name: manager.name,
+            assigned_to_email: manager.email,
+            assignedAt,
+            assigned_at: assignedAt,
+            executive_read_at: '',
+            source: 'Assign New Task',
+            from_source: item.sourceUser.name || item.sourceUser.email || 'Executive',
+            source_executor_id: item.sourceUser.id,
+            source_executor_name: item.sourceUser.name,
+            source_executor_email: item.sourceUser.email,
+            source_assign_new_task_id: item.taskId,
+            source_assign_new_task_key: item.compositeId,
+            created_at: item.task?.created_at || assignedAt,
+            updated_at: item.task?.updated_at || assignedAt,
+          };
+
+          const insertResult = await client.query(`
+            INSERT INTO public.dataset_rows (dataset_id, row_number, data)
+            VALUES ($1, $2, $3::jsonb)
+            RETURNING id::text, row_number, data
+          `, [DATASET_ID, nextRowNumber, JSON.stringify(data)]);
+          const row = insertResult.rows[0];
+          inserted.push(row);
+          await insertRowEvent(client, row, 'assignment', req.user, {
+            assigned_to: { from: '', to: manager.id },
+            assigned_to_name: { from: '', to: manager.name },
+            task_status: { from: '', to: 'Pending' },
+            source_assign_new_task_key: { from: '', to: item.compositeId },
+          }, `Assigned task from ${item.sourceUser.name || item.sourceUser.email || 'executive'}`);
+        }
+
+        const bySourceUser = new Map();
+        for (const item of sourceTasks) {
+          if (!bySourceUser.has(item.sourceUser.id)) bySourceUser.set(item.sourceUser.id, new Set());
+          bySourceUser.get(item.sourceUser.id).add(item.taskId);
+        }
+
+        for (const user of usersResult.rows) {
+          const removeIds = bySourceUser.get(user.id);
+          if (!removeIds) continue;
+          const metadata = user.metadata && typeof user.metadata === 'object' ? user.metadata : {};
+          const currentTasks = Array.isArray(metadata.assign_new_tasks) ? metadata.assign_new_tasks : [];
+          const nextMeta = mergeRoleMetadata({
+            ...metadata,
+            assign_new_tasks: currentTasks.filter((task) => !removeIds.has(String(task?.id || '').trim())),
+          }, user.role, user);
+          await client.query(`
+            UPDATE public.app_users
+            SET metadata = $2::jsonb,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+          `, [user.id, JSON.stringify(nextMeta)]);
+        }
+
+        await client.query('COMMIT');
+        res.json({
+          ok: true,
+          message: `Assigned ${inserted.length} task${inserted.length === 1 ? '' : 's'} to ${manager.name}`,
+          assigned: inserted.length,
+          assigned_to: manager,
+          rows: inserted.map((row) => ({
+            id: row.id,
+            row_number: row.row_number,
+            ...row.data,
+          })),
+          removed_task_ids: taskIds,
+        });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => { });
+        console.error('Admin assign new task error:', error);
+        res.status(500).json({ ok: false, message: 'Task assignment failed', error: error.message });
+      } finally {
+        client.release();
       }
     });
 
@@ -176,6 +394,7 @@ function createUsersRoutes(ctx) {
           FROM public.dataset_rows
           WHERE dataset_id = $1
             AND data->>'assigned_to' = $2
+            AND COALESCE(data->>'source_assign_new_task_key', '') = ''
           ORDER BY updated_at DESC, row_number DESC, id DESC
         `, [DATASET_ID, userId]);
     

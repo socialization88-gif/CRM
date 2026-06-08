@@ -1239,14 +1239,44 @@ window.addEventListener('resize', () => {
     formOpen: false,
     editingId: '',
   };
+  let connectorAssignedTaskRows = [];
+  let connectorAssignedTaskRowsLoaded = false;
+  let connectorAssignedTaskRowsLoading = false;
   let selectedIndex = 0;
 
   function getRows() {
+    if (currentUser?.role === 'executor') return connectorAssignedTaskRows;
     if (typeof window.getTaskSummaryRows === 'function') {
       const connectorRows = window.getTaskSummaryRows();
       if (Array.isArray(connectorRows) && connectorRows.length) return connectorRows;
     }
     return fallbackRows;
+  }
+
+  async function loadConnectorAssignedTaskRows() {
+    if (currentUser?.role !== 'executor') return [];
+    if (connectorAssignedTaskRowsLoading) return connectorAssignedTaskRows;
+    connectorAssignedTaskRowsLoading = true;
+    const tbody = document.getElementById('taskSummaryTableBody');
+    if (tbody && !connectorAssignedTaskRowsLoaded) {
+      tbody.innerHTML = '<tr><td colspan="5"><div class="empty">Loading tasks...</div></td></tr>';
+    }
+    try {
+      const data = await apiFetch('/api/executor/admin-assigned-tasks');
+      connectorAssignedTaskRows = Array.isArray(data.tasks) ? data.tasks : [];
+      connectorAssignedTaskRowsLoaded = true;
+      renderRows();
+      return connectorAssignedTaskRows;
+    } catch (error) {
+      connectorAssignedTaskRows = [];
+      connectorAssignedTaskRowsLoaded = false;
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="empty">${esc(error.message || 'Task list failed')}</div></td></tr>`;
+      }
+      return [];
+    } finally {
+      connectorAssignedTaskRowsLoading = false;
+    }
   }
 
   function getSelectedRow() {
@@ -1677,9 +1707,9 @@ window.addEventListener('resize', () => {
     const buttonArea = document.querySelector('#taskReportPanel .button-area');
     if (buttonArea) buttonArea.style.display = taskReportState.tab === 'form' ? 'flex' : 'none';
     if (taskReportState.tab === 'feedback') ensureTaskReportFeedbackDefaults();
-<<<<<<< HEAD
     const activeFrame = document.querySelector(`#taskReportPanel [data-task-report-panel="${taskReportState.tab}"] iframe`);
     if (activeFrame) setTimeout(() => resizeTaskReportFrame(activeFrame), 50);
+    try { adjustTaskReportIframeHeight(); } catch (e) { /* ignore */ }
   }
 
   function assignNewTaskStorageKey() {
@@ -1907,10 +1937,6 @@ window.addEventListener('resize', () => {
     } catch (error) {
       frame.style.height = 'calc(100vh - 175px)';
     }
-=======
-    // ensure iframe sizing updates after switching tabs
-    try { adjustTaskReportIframeHeight(); } catch (e) { /* ignore */ }
->>>>>>> e2609fc (modify setting)
   }
 
   // Adjust iframe heights inside task report to avoid nested scrollbars.
@@ -2125,7 +2151,39 @@ window.addEventListener('resize', () => {
     const tbody = document.getElementById('taskSummaryTableBody');
     if (!tbody) return;
     if (currentUser?.role === 'executor') {
-      tbody.innerHTML = '<tr><td colspan="5"><div class="empty">Task list has moved to your account profile.</div></td></tr>';
+      if (!connectorAssignedTaskRowsLoaded && !connectorAssignedTaskRowsLoading) {
+        loadConnectorAssignedTaskRows();
+        return;
+      }
+      if (connectorAssignedTaskRowsLoading && !connectorAssignedTaskRows.length) {
+        tbody.innerHTML = '<tr><td colspan="5"><div class="empty">Loading tasks...</div></td></tr>';
+        return;
+      }
+      if (!connectorAssignedTaskRows.length) {
+        tbody.innerHTML = '<tr><td colspan="5"><div class="empty">No assigned tasks</div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      connectorAssignedTaskRows.forEach((row, index) => {
+        const assignedAt = row.assigned_at ? formatDateTime(row.assigned_at) : (row.created_at ? formatDateTime(row.created_at) : '-');
+        const status = row.task_status || 'Pending';
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #e2e8f0';
+        tr.style.background = index % 2 === 0 ? '#ffffff' : '#f7fafc';
+        tr.innerHTML = `
+          <td style="padding:10px 14px;color:#2d3748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <b>${esc(row.name || '-')}</b>
+            <div class="muted">${esc([row.mobile || row.phone || '', row.email || ''].filter(Boolean).join(' | ') || '-')}</div>
+          </td>
+          <td style="padding:10px 14px;color:#4a5568;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(status)}</td>
+          <td style="padding:10px 14px;color:#4a5568;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(assignedAt)}</td>
+          <td style="padding:10px 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="font-size:12px;font-weight:600;color:#2b6cb0;letter-spacing:.04em;">${esc(row.source || '-')}</span></td>
+          <td style="padding:10px 14px;text-align:center;white-space:nowrap;">
+            <button type="button" class="task-view-btn" onclick="openProfile('${attr(row.id)}')">VIEW</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
       return;
     }
     const rows = getRows();
@@ -2278,6 +2336,12 @@ ul.bullet li{margin-bottom:4px;}
     win.document.close();
   };
   window.refreshTaskSummaryWidget = () => {
+    if (currentUser?.role === 'executor') {
+      connectorAssignedTaskRowsLoaded = false;
+      loadConnectorAssignedTaskRows().then(() => renderTaskReport());
+      closeTaskSummaryConnector();
+      return;
+    }
     renderRows();
     renderTaskReport();
     closeTaskSummaryConnector();
@@ -2404,7 +2468,8 @@ function switchView(view, options = {}) {
   if (window.matchMedia('(max-width: 1100px)').matches) {
     document.body.classList.remove('sidebar-open');
   }
-  if (taskMode && typeof window.renderTaskReport === 'function') window.renderTaskReport();
+  if (taskMode && typeof window.refreshTaskSummaryWidget === 'function') window.refreshTaskSummaryWidget();
+  else if (taskMode && typeof window.renderTaskReport === 'function') window.renderTaskReport();
   if (taskReportMode && typeof window.renderTaskReportForm === 'function') window.renderTaskReportForm();
   if (assignNewTaskMode) {
     if (typeof window.loadAssignNewTaskList === 'function') window.loadAssignNewTaskList();

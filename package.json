@@ -6,6 +6,9 @@
   "version": "1.0.0",
   "main": "electron-main.js",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "start": "node server.js",
     "desktop": "electron .",
     "pack:win": "npm exec -- electron-builder --win --x64",
@@ -20,12 +23,16 @@
     "@langchain/core": "^1.1.48",
     "@langchain/google-genai": "^2.1.31",
     "@langchain/openai": "^1.4.7",
+    "@vitejs/plugin-react": "^5.1.1",
     "bcrypt": "^6.0.0",
     "cors": "latest",
     "dotenv": "latest",
     "express": "latest",
     "nodemailer": "^8.0.10",
-    "pg": "latest"
+    "pg": "latest",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "vite": "^7.2.7"
   },
   "build": {
     "appId": "com.quantum.workmanagement",

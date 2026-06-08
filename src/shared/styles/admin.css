@@ -1,0 +1,18 @@
+.admin-only,.admin-only.block,.admin-only.grid,body.is-admin .view.admin-only,.account-form-drawer{display:none}
+body.is-admin .admin-only{display:inline-flex}
+body.is-admin .admin-only.block,body.is-admin .view.admin-only.active{display:block}
+body.is-admin .admin-only.grid{display:grid}
+.admin-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:.75rem;align-items:start}
+.accounts-stack{display:grid;gap:.75rem;height:100%}
+#accountsView .panel{display:flex;flex-direction:column;min-height:0;height:100%}
+#accountsView .panel-head{padding:.55rem .75rem;top:0}
+#accountsView .table-scroll{flex:1 1 auto;max-height:none}
+.form-card{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:1rem;display:grid;gap:.65rem}
+.switch{position:relative;width:50px;height:28px;flex:0 0 auto}
+.switch input{display:none}
+.switch span{position:absolute;inset:0;background:#d7dfeb;border:1px solid var(--line2);border-radius:999px;transition:.16s}
+.switch span:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.16s}
+.switch input:checked+span{background:rgba(70,211,105,.28);border-color:var(--green)}
+.switch input:checked+span:before{left:25px;background:var(--green)}
+.account-form-drawer{position:fixed;right:12px;top:74px;width:min(420px,calc(100vw - 24px));z-index:1400}
+.account-form-drawer .filter-grid{margin-top:.5rem}

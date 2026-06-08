@@ -16,6 +16,9 @@ let accountNewTaskRows = [];
 let adminTaskRows = [];
 let adminTaskRowsLoaded = false;
 let adminTaskRowsLoading = false;
+let adminTaskSelectMode = false;
+let adminTaskSelectedIds = new Set();
+let adminTaskAssigning = false;
 window.adminTaskState = window.adminTaskState || { tab: 'assign', search: '' };
 
 function adminTaskMatchesSearch(row, search) {
@@ -63,15 +66,117 @@ async function loadAdminTaskRows() {
   try {
     const data = await apiFetch('/api/admin/assign-new-tasks');
     adminTaskRows = Array.isArray(data.tasks) ? data.tasks : [];
+    adminTaskSelectedIds = new Set([...adminTaskSelectedIds].filter((id) => adminTaskRows.some((row) => String(row.id) === String(id))));
     adminTaskRowsLoaded = true;
+    renderAdminTaskAssignControls();
     renderAdminTaskAssignRows();
   } catch (error) {
     adminTaskRows = [];
     adminTaskRowsLoaded = false;
+    renderAdminTaskAssignControls();
     const body = document.getElementById('adminTaskAssignBody');
     if (body) body.innerHTML = `<tr><td colspan="6"><div class="empty">${esc(error.message || 'Task list failed')}</div></td></tr>`;
   } finally {
     adminTaskRowsLoading = false;
+  }
+}
+
+function adminTaskExecutiveList() {
+  if (Array.isArray(executiveAccounts) && executiveAccounts.length) return executiveAccounts;
+  if (Array.isArray(bulkAssignExecutiveRows) && bulkAssignExecutiveRows.length) return bulkAssignExecutiveRows;
+  return Array.isArray(accountRows) ? accountRows.filter((user) => String(user.role || '').toLowerCase() === 'executor' && user.active !== false) : [];
+}
+
+function renderAdminTaskAssignControls() {
+  const button = document.getElementById('adminTaskSelectBtn');
+  const select = document.getElementById('adminTaskExecutiveSelect');
+  if (!button || !select) return;
+  button.textContent = adminTaskSelectMode ? 'Cancel' : 'Select';
+  button.disabled = adminTaskAssigning;
+  const execList = adminTaskExecutiveList();
+  const hasSelection = adminTaskSelectedIds.size > 0;
+  select.style.display = adminTaskSelectMode ? 'inline-block' : 'none';
+  select.disabled = adminTaskAssigning || !execList.length;
+  if (!execList.length) {
+    select.innerHTML = '<option value="">No executive found</option>';
+  } else {
+    select.innerHTML = `<option value="">Choose executive</option>${execList.map((executive) => `<option value="${attr(executive.id)}">${esc(executive.name || executive.email || 'Executive')}</option>`).join('')}`;
+  }
+  if (!hasSelection) select.value = '';
+}
+
+function validateAdminTaskExecutivePicker() {
+  if (!adminTaskSelectMode) return;
+  if (!adminTaskExecutiveList().length) {
+    showToast('No executive found.');
+    return;
+  }
+  if (!adminTaskSelectedIds.size) showToast('Please select at least one task.');
+}
+
+function toggleAdminTaskSelectMode(force) {
+  if (currentUser?.role !== 'admin' || adminTaskAssigning) return;
+  adminTaskSelectMode = typeof force === 'boolean' ? force : !adminTaskSelectMode;
+  if (!adminTaskSelectMode) adminTaskSelectedIds = new Set();
+  renderAdminTaskAssignControls();
+  renderAdminTaskAssignRows();
+}
+
+function toggleAdminTaskRowSelection(id, checked) {
+  if (!adminTaskSelectMode || adminTaskAssigning) return;
+  const taskId = String(id || '').trim();
+  if (!taskId) return;
+  if (checked) adminTaskSelectedIds.add(taskId);
+  else adminTaskSelectedIds.delete(taskId);
+  renderAdminTaskAssignControls();
+  renderAdminTaskAssignRows();
+}
+
+async function assignSelectedAdminTasks(executiveId) {
+  if (!adminTaskSelectMode || adminTaskAssigning) return;
+  const assignedTo = String(executiveId || '').trim();
+  const select = document.getElementById('adminTaskExecutiveSelect');
+  if (!adminTaskSelectedIds.size) {
+    if (select) select.value = '';
+    showToast('Please select at least one task.');
+    return;
+  }
+  if (!adminTaskExecutiveList().length) {
+    if (select) select.value = '';
+    showToast('No executive found.');
+    return;
+  }
+  if (!assignedTo) return;
+
+  const selectedIds = [...adminTaskSelectedIds];
+  adminTaskAssigning = true;
+  renderAdminTaskAssignControls();
+  try {
+    const data = await apiFetch('/api/admin/assign-new-tasks/assign', {
+      method: 'POST',
+      body: JSON.stringify({ task_ids: selectedIds, assigned_to: assignedTo })
+    });
+    const removed = new Set(Array.isArray(data.removed_task_ids) ? data.removed_task_ids.map(String) : selectedIds);
+    adminTaskRows = adminTaskRows.filter((row) => !removed.has(String(row.id)));
+    adminTaskSelectedIds = new Set();
+    adminTaskSelectMode = false;
+    adminTaskRowsLoaded = true;
+    renderAdminTaskAssignControls();
+    renderAdminTaskAssignRows();
+    showToast(data.message || 'Tasks assigned');
+    try {
+      localStorage.setItem('crm.assignNewTask.updatedAt', String(Date.now()));
+    } catch (_) { }
+    await Promise.all([
+      loadOverview().catch(() => null),
+      loadBulkQueueSummary().catch(() => null)
+    ]);
+  } catch (error) {
+    showToast(error.message || 'Task assignment failed');
+    if (select) select.value = '';
+  } finally {
+    adminTaskAssigning = false;
+    renderAdminTaskAssignControls();
   }
 }
 
@@ -87,8 +192,9 @@ function renderAdminTaskAssignRows() {
   body.innerHTML = filtered.map((row) => {
     const createdAt = row.created_at ? formatDateTime(row.created_at) : '-';
     const contact = [row.phone || row.mobile || '-', row.email || row.executor_email || 'No email'].filter(Boolean).join(' | ');
-    return `<tr>
-      <td><b>${esc(row.full_name || row.name || '-')}</b><div class="muted">${esc(row.executor_name || 'Executive')} | ${esc(row.executor_email || '-')}</div></td>
+    const selected = adminTaskSelectedIds.has(String(row.id));
+    return `<tr class="${selected ? 'bulk-selected' : ''}">
+      <td><div class="profile-cell">${adminTaskSelectMode ? `<label class="row-select-cell"><input type="checkbox" onclick="event.stopPropagation()" ${selected ? 'checked' : ''} onchange="toggleAdminTaskRowSelection('${attr(row.id)}', this.checked)"></label>` : ''}<div><b>${esc(row.full_name || row.name || '-')}</b><div class="muted">${esc(row.executor_name || 'Executive')} | ${esc(row.executor_email || '-')}</div></div></div></td>
       <td>${esc(contact)}</td>
       <td>${esc(row.advertisement || 'Advertisement')}</td>
       <td>${esc(row.problem || '-')}</td>
@@ -102,6 +208,10 @@ window.loadAdminTaskRows = loadAdminTaskRows;
 window.setAdminTaskTab = setAdminTaskTab;
 window.debouncedAdminTaskSearch = debouncedAdminTaskSearch;
 window.renderAdminTaskAssignRows = renderAdminTaskAssignRows;
+window.toggleAdminTaskSelectMode = toggleAdminTaskSelectMode;
+window.toggleAdminTaskRowSelection = toggleAdminTaskRowSelection;
+window.assignSelectedAdminTasks = assignSelectedAdminTasks;
+window.validateAdminTaskExecutivePicker = validateAdminTaskExecutivePicker;
 
 window.addEventListener('storage', (event) => {
   if (event.key !== 'crm.assignNewTask.updatedAt') return;
@@ -120,6 +230,7 @@ async function loadBulkAssignExecutives() {
         renderAccountExecutiveOptions();
         renderSettingsExecutiveList();
         renderBulkAssignPanel();
+        renderAdminTaskAssignControls();
         renderBulkSegments();
       } catch {
         executiveAccounts = [];
@@ -128,6 +239,7 @@ async function loadBulkAssignExecutives() {
         renderAccountExecutiveOptions();
         renderSettingsExecutiveList();
         renderBulkAssignPanel();
+        renderAdminTaskAssignControls();
         renderBulkSegments();
       }
     }
@@ -1838,13 +1950,9 @@ async function loadBulkAssignExecutives() {
       const tabBtn = document.getElementById('accountTabBtnTask');
       const assignTabBtn = document.getElementById('accountTabBtnAssignNewTask');
       const tabPanel = document.getElementById('accountTabTask');
-<<<<<<< HEAD
       const assignTabPanel = document.getElementById('accountTabAssignNewTask');
-      const showTasks = String(accountProfile?.role || '').toLowerCase() === 'executor';
-=======
       const accountRole = String(accountProfile?.role || '').toLowerCase();
       const showTasks = accountRole === 'executor' || accountRole === 'admin';
->>>>>>> e2609fc (modify setting)
       if (tabBtn) tabBtn.style.display = showTasks ? 'inline-flex' : 'none';
       if (assignTabBtn) assignTabBtn.style.display = showTasks ? 'inline-flex' : 'none';
       if (!showTasks && tabPanel) tabPanel.classList.remove('active');
@@ -1886,17 +1994,9 @@ async function loadBulkAssignExecutives() {
             <b title="${attr(task.name || '-')}">#${esc(task.row_number || index + 1)} ${esc(task.name || '-')}</b>
             <div class="muted">${esc(detail)}</div>
           </div>
-<<<<<<< HEAD
-          <div class="muted">${esc(task.stage || 'Task')}</div>
-          <div class="muted">Assigned at: ${esc(assignedAt)}</div>
-          ${task.mobile ? `<div class="muted">Mobile: ${esc(task.mobile)}</div>` : ''}
-          <div class="muted">Email: ${esc(task.email || '-')}</div>
-          ${instruction ? `<div class="muted">${esc(instruction)}</div>` : ''}
-=======
           <div class="muted account-task-date" title="${attr(assignedAt)}">Assigned at: ${esc(assignedAt)}</div>
           <div class="muted account-task-contact" title="${attr(contact)}">${esc(contact)}</div>
           <div class="account-task-status"><span class="pill ${statusClass}">${esc(status)}</span></div>
->>>>>>> e2609fc (modify setting)
         </div>`;
       }).join('');
     }

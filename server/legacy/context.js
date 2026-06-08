@@ -936,13 +936,18 @@ function createContext({ pool, rootDir, env }) {
           )::int AS total_completed_tasks
         FROM public.dataset_rows
         WHERE dataset_id = $1
+          AND COALESCE(data->>'source_assign_new_task_key', '') = ''
       `, [DATASET_ID]),
       pool.query(`
         SELECT COUNT(*)::int AS total_updated_profiles
-        FROM public.dataset_row_events
-        WHERE dataset_id = $1
-          AND deleted_at IS NULL
-          AND event_type IN ('assignment', 'profile_update', 'call_update')
+        FROM public.dataset_row_events e
+        LEFT JOIN public.dataset_rows r
+          ON r.dataset_id = e.dataset_id
+         AND r.id::text = e.row_id
+        WHERE e.dataset_id = $1
+          AND e.deleted_at IS NULL
+          AND e.event_type IN ('assignment', 'profile_update', 'call_update')
+          AND COALESCE(r.data->>'source_assign_new_task_key', '') = ''
       `, [DATASET_ID]),
       pool.query(`
         SELECT
@@ -969,7 +974,9 @@ function createContext({ pool, rootDir, env }) {
           END AS completion_percentage
         FROM public.app_users u
         LEFT JOIN public.dataset_rows r
-          ON r.dataset_id = $1 AND r.data->>'assigned_to' = u.id
+          ON r.dataset_id = $1
+         AND r.data->>'assigned_to' = u.id
+         AND COALESCE(r.data->>'source_assign_new_task_key', '') = ''
         LEFT JOIN public.dataset_rows rp
           ON rp.dataset_id = $1 AND rp.id::text = u.profile_row_id
         WHERE u.role = 'executor' AND u.active = TRUE
@@ -1044,6 +1051,7 @@ function createContext({ pool, rootDir, env }) {
         END AS completion_percentage
       FROM public.dataset_rows
       WHERE dataset_id = $1
+        AND COALESCE(data->>'source_assign_new_task_key', '') = ''
       ${filterDate ? `
         AND COALESCE(
           NULLIF(data->>'executive_read_at', ''),
@@ -1065,6 +1073,7 @@ function createContext({ pool, rootDir, env }) {
         FROM public.dataset_rows r
         WHERE r.dataset_id = $1
           AND COALESCE(r.data->>'assigned_to', '') = $2
+          AND COALESCE(r.data->>'source_assign_new_task_key', '') = ''
           AND LOWER(COALESCE(r.data->>'task_status', 'Pending')) NOT IN ('completed', 'handled')
           ${dateClause}
         ORDER BY (COALESCE(r.data->>'executive_read_at', '') = '') DESC,
